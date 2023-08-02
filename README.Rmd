@@ -1,0 +1,16 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# ds-global-monitoring-explore
+
+This repo contains exploratory work related to the [pa-global-monitoring repository](https://github.com/OCHA-DAP/pa-global-monitoring). As **pa-global-monitoring** is already set up with `{renv}` and `GH Actions` to send emails according to CRON scheduled jobs, this repo was created to explore additional topics without cluttering that repo with additional dependencies.
