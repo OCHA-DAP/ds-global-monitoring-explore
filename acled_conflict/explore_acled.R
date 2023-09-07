@@ -565,62 +565,61 @@ df_flags %>%
   mutate(
     fatalities_norm = (fatalities - min(fatalities)) / (max(fatalities) - min(fatalities)),
     events_norm = (events - min(events)) / (max(events) - min(events))
+  ) %>%
+  pivot_longer(
+    ends_with("norm")
+  ) %>%
+  ggplot(
+    aes(
+      x = date,
+      y = value,
+      group = name,
+      color = name
+    )
+  ) +
+  geom_line() +
+  facet_wrap(
+    ~ country,
+    scales = "free_y"
+  ) +
+  scale_color_manual(
+    values = c("black", "darkgrey"),
+    labels = c("Events", "Fatalities")
+  ) +
+  labs(
+    x = "",
+    y = "Normalized value",
+    color = "",
+    title = "Events and fatalities by country, normalized between 0 and 1"
   )
-ggplot() +
-  geom_line(
-    data = df_flags,
-    mapping = aes(
-      x = date,
-      y = fatalities
-    ),
-    color = "black"
+
+
+bind_rows(
+  df_flags_event %>% mutate(type = "Events"),
+  df_flags_fatal %>% mutate(type = "Fatalities"),
+  df_flags_both %>% mutate(type = "Both")
+) %>%
+  ggplot(
+    aes(
+      xmin = start_date,
+      xmax = end_date,
+      group = type,
+      fill = type
+    )
+  ) +
+  geom_rect(
+    ymin = 0,
+    ymax = Inf
+  ) +
+  scale_fill_manual(
+    values = c(hdx_hex("tomato-hdx"), "black", "darkgrey")
   ) +
   facet_wrap(
     ~ country,
     scales = "free_y"
-  ) 
-
-
-ggplot() +
-  geom_rect(
-    data = df_flags_event,
-    mapping = aes(
-      xmin = start_date,
-      xmax = end_date
-    ),
-    ymin = 0,
-    ymax = Inf,
-    fill = hdx_hex("sapphire-hdx")
   ) +
-  geom_rect(
-    data = df_flags_fatal,
-    mapping = aes(
-      xmin = start_date,
-      xmax = end_date
-    ),
-    ymin = 0,
-    ymax = Inf,
-    fill = hdx_hex("mint-hdx")
-  ) +
-  geom_rect(
-    data = df_flags_both,
-    mapping = aes(
-      xmin = start_date,
-      xmax = end_date
-    ),
-    ymin = 0,
-    ymax = Inf,
-    fill = hdx_hex("tomato-light")
-  ) +
-  geom_line(
-    data = df_flags,
-    mapping = aes(
-      x = date,
-      y = fatalities
-    ),
-    color = "black"
-  ) +
-  facet_wrap(
-    ~ country,
-    scales = "free_y"
-  ) 
+  labs(
+    x = "",
+    fill = "Alert",
+    title = "Country alerts generated from monthly anomalies >= 90%"
+  )
