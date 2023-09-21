@@ -48,6 +48,8 @@ proc_dir = DATA_DIR / "private/processed/glb/iri"
 
 ## Load
 
+Note: this needs Python 3.9 ([GH Issue](https://github.com/OCHA-DAP/ocha-anticipy/issues/209))
+
 ```python
 # set up config
 country_config = create_custom_country_config("../glb.yaml")
