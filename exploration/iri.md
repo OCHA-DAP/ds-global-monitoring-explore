@@ -23,6 +23,8 @@ jupyter:
 
 ```python
 import requests
+import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 from ochanticipy import (
@@ -33,9 +35,18 @@ from ochanticipy import (
     create_country_config,
     create_custom_country_config,
 )
+import rioxarray as rxr
+import xarray as xr
 
 from src import utils
 ```
+
+```python
+DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
+proc_dir = DATA_DIR / "private/processed/glb/iri"
+```
+
+## Load
 
 ```python
 # set up config
@@ -52,8 +63,46 @@ ds = iri_prob.load()
 ```
 
 ```python
+iri_prob._get_file_name().removesuffix(".nc").replace(
+    "tercile", "lower_tercile"
+)
+```
+
+```python
 ds
 ```
+
+## Save TIF
+
+```python
+# save TIFs each date
+# only lower tercile
+
+da = ds.sel(C=0)["prob"]
+
+save_dir = proc_dir / "tif"
+
+for date in da.F.values:
+    filename = (
+        iri_prob._get_file_name()
+        .removesuffix(".nc")
+        .replace("tercile", "lower_tercile")
+        + "_"
+        + date.strftime("%Y-%m-%d")
+        + ".tif"
+    )
+    da_f = da.sel(F=date)
+
+    da_f.rio.to_raster(save_dir / filename)
+```
+
+```python
+# check TIF
+da_o = rxr.open_rasterio(save_dir / filename)
+da_o[0].plot()
+```
+
+## Plot examples
 
 ```python
 # plot example date for below avg tercile
