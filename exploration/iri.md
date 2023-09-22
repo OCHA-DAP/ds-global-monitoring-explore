@@ -35,6 +35,7 @@ from ochanticipy import (
     create_country_config,
     create_custom_country_config,
 )
+import pandas as pd
 import rioxarray as rxr
 import xarray as xr
 
@@ -100,8 +101,13 @@ for date in da.F.values:
 
 ```python
 # check TIF
+save_dir = proc_dir / "tif"
 da_o = rxr.open_rasterio(save_dir / filename)
 da_o[0].plot()
+```
+
+```python
+da_o
 ```
 
 ## Plot examples
@@ -144,10 +150,6 @@ df = (
 # plot cumulative distribution of probability (reversed)
 df.hist("prob", cumulative=-1, bins=100, density=1)
 plt.gca().invert_xaxis()
-```
-
-```python
-
 ```
 
 ```python

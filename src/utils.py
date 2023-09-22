@@ -40,6 +40,8 @@ def process_acaps_seasonal():
     for col in cols:
         if (df[col].apply(len) == 1).all():
             df = df.explode(col)
+    # also explode labels
+    df = df.explode("label")
 
     # explode adm1
     def replace_nans(row):
@@ -95,6 +97,11 @@ def load_drought_codabs() -> gpd.GeoDataFrame:
 
 
 def process_drought_codabs():
+    """
+    Merges all CODABs into one shp.
+    Selects only those that are in ACAPS, and have an existing AnticiPy config.
+    :return:
+    """
     df = load_acaps_seasonal_processed()
     gdf = gpd.GeoDataFrame()
     for adm0 in df[df["has_codab"]]["iso"].unique():
