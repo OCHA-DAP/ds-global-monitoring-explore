@@ -66,12 +66,6 @@ ds = iri_prob.load()
 ```
 
 ```python
-iri_prob._get_file_name().removesuffix(".nc").replace(
-    "tercile", "lower_tercile"
-)
-```
-
-```python
 ds
 ```
 
@@ -96,7 +90,7 @@ for date in da.F.values:
     )
     da_f = da.sel(F=date)
 
-    da_f.rio.to_raster(save_dir / filename)
+    da_f.rio.to_raster(save_dir / filename, driver="COG")
 ```
 
 ```python
@@ -135,7 +129,7 @@ ds_adm0 = ds_f.rio.clip(adm0["geometry"], all_touched=True)
 # resample to 0.01 degrees
 # note that ESA landcover is 1/12000 degrees (0.0000833...)
 # which is about 10m at equator
-ds_adm0 = utils.approx_mask_raster(ds_adm0, "X", "Y", resolution=0.01)
+ds_adm0 = utils.approx_mask_raster(ds_adm0, "X", "Y", resolution=0.1)
 ds_adm0 = ds_adm0.rio.clip(adm0["geometry"], all_touched=True)
 ds_adm0.sel(C=0)["prob"].plot()
 df = (
@@ -144,6 +138,10 @@ df = (
     .reset_index()
     .drop(columns="F")
 )
+```
+
+```python
+
 ```
 
 ```python
