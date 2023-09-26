@@ -1,0 +1,192 @@
+---
+title: "Merging Forecast & Land Use"
+output: html_document
+date: "2023-09-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Intro
+
+This document has initial exploration of combining IRI seasonal forecast data w/ croplands. 
+
+Objective : combine crop fraction w/ IRI seasonal forecast data.
+
+**Issue:** Seasonal forecast data is 1 degree resolution, whereas land use/cropland masks can be much higher resolution
+
+For each country we would like to calcualte total % cropland less than or equal to some IRI probability threshold. 1 degree is very coarse for country boundaries, therefore we would like to keep a higher resolution on cropland fraction so that we do wildly attributed croplands.
+
+However aggregating land cover is non-trivial. So far we have:
+
+1. masked cropland from ESA WorldCover (10m) and aggregated to 500 m grid by number of 10 meter pixels in each new 500 m cell thus creating a type of cropland fraction
+2. received cropland fraction (1 km) from FAO
+
+## Takeaway (so far)
+
+- with 500 m or 1 km land use variables the memory requirements/ storage is still way too high
+- We have 80 dates for IRI seasonal forecast (lt 1-4) each new raster combined with 
+  + 500 m crop fraction is ≥12 GB
+  + 1 km (FAO) crop fraction ~ 4.4 GB
+  
+## Nex Steps
+
+- aggregate to 10 km -- can I do this locally or do I need to on GEE
+  
+
+
+# Processing
+```{r eval=T}
+library(rgee)
+library(terra)
+library(tidyverse)
+# ee_Initialize(gcs=TRUE)
+
+fp_iri_tifs <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "private",
+  "processed",
+  "glb",
+  "iri"
+  ,"tif"
+) 
+  
+
+# land use - land cover directory
+fp_lulc <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "public",
+  "processed",
+  "glb",
+  "esa_world_cover"
+)
+
+fp_crop_frac_fao <- file.path(
+        Sys.getenv("AA_DATA_DIR"),
+        "public",
+        "raw",
+        "glb",
+        "cropland",
+        "GlcShare_v10_02",
+        "glc_shv10_02.Tif")
+```
+
+```{r eval =F}
+r_cropfrac <- rast(fp_crop_frac_fao)
+# for testing purposes let's start by just looking at latest forecast data
+r_iri <- rast(
+    list.files(fp_iri_tifs,full.names = T)[80]
+  )
+
+# rename bands to lt1;4
+r_iri %>% 
+  set.names(
+    paste0("lt",1:4)
+  )
+
+r_iri_resample <- terra::resample(x = r_iri,y = r_cropfrac)
+
+r_fprecip_crop <- rast(list(r_iri_resample,r_cropfrac))
+
+
+# 4.4 GB
+# r_fprecip_crop %>% 
+#   terra::writeRaster(
+#     filename = "202309_iri_FAO_cropfrac.tif",
+#     gdal="cog"
+#     
+#     )
+
+```
+
+
+
+```{r}
+
+# Global Land use raster is split into several tifs
+# but we can load them as Spat Raster Collection
+
+fp_lulc_tif <- list.files(path = fp_lulc,pattern = "*.tif$",full.names = T)
+rc_lulc <- terra::sprc(fp_lulc_tif)
+
+# and then merge them into a single raster
+r_lulc <- merge(rc_lulc)
+
+
+# for testing purposes let's start by just looking at latest forecast data
+r_iri <- rast(
+    list.files(fp_iri_tifs,full.names = T)[80]
+  )
+
+# rename bands to lt1;4
+r_iri %>% 
+  set.names(
+    paste0("lt",1:4)
+  )
+
+
+```
+
+
+Additional resample IRI raster and set to equal extents
+```{r}
+r_lulc_cropped <- crop(r_lulc,r_iri)
+r_lulc_cropped %>% 
+  set.names("crop_pixels")
+
+r_iri_resample <- terra::resample(x = r_iri,y = r_lulc_cropped)
+```
+
+We wrote out a sample raster that has combined bands and we can see it's huge (12 GB)
+```{r}
+# not what we want
+#r_fprecip_crop <- merge(r_iri_resample,r_lulc_cropped)
+r_fprecip_crop %>% 
+  object.size()
+
+r_fprecip_crop <- rast(list(r_iri_resample,r_lulc_cropped))
+r_fprecip_crop %>% 
+  terra::writeRaster(filename = "202309_iri_croplands.tif")
+```
+
+```{r}
+```
+
+```{r}
+# raster list - pixel ≥ thresh
+rl_pixels_gte_thresh<- c(34:55)%>%  # loop through thresholds
+  map(
+    \(thresh_prob){
+      
+      # print thresh temp so we can see progress
+      cat(thresh_prob,"\n")
+      
+      # start w/ a fresh copy of resampled IRI raster everytime
+      r_iri_resample_copy <- r_iri_resample
+      
+      cat("making values < threshold NA\n")
+      r_iri_resample_copy[r_iri_resample_copy<thresh_prob]<-NA
+      
+      cat("making all other values 1\n")
+      r_iri_resample_copy[!is.na(r_iri_resample_copy)]<-1
+      
+      cat("multiplying by crop pixel raster\n")
+      r_pixels_cropland_gte_thresh <- r_iri_resample_copy*r_lulc_cropped
+      
+      cat("finished\n")
+      return(r_pixels_cropland_gte_thresh)
+    }
+    )
+```
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
