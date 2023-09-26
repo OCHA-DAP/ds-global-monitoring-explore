@@ -54,7 +54,7 @@ fp_iri_tifs <- file.path(
   
 
 # land use - land cover directory
-fp_lulc <- file.path(
+fp_esa_frac <- file.path(
   Sys.getenv("AA_DATA_DIR"),
   "public",
   "processed",
@@ -103,17 +103,20 @@ r_fprecip_crop <- rast(list(r_iri_resample,r_cropfrac))
 
 
 ```{r}
-
 # Global Land use raster is split into several tifs
 # but we can load them as Spat Raster Collection
+fp_esa_cf_500m <- list.files(
+  path = fp_esa_frac,pattern = "*500m.*.tif$",
+  full.names = T)
 
-fp_lulc_tif <- list.files(path = fp_lulc,pattern = "*.tif$",full.names = T)
-rc_lulc <- terra::sprc(fp_lulc_tif)
 
+rc_esa_cf_500m <- terra::sprc(fp_lulc_500m)
 # and then merge them into a single raster
-r_lulc <- merge(rc_lulc)
+r_esa_cf_500m <- merge(rc_esa_cf_500m)
+```
 
 
+```{r}
 # for testing purposes let's start by just looking at latest forecast data
 r_iri <- rast(
     list.files(fp_iri_tifs,full.names = T)[80]
@@ -131,11 +134,11 @@ r_iri %>%
 
 Additional resample IRI raster and set to equal extents
 ```{r}
-r_lulc_cropped <- crop(r_lulc,r_iri)
-r_lulc_cropped %>% 
+r_esa_cf_500m_cropped <- crop(r_esa_cf_500m,r_iri)
+r_esa_cf_500m_cropped %>% 
   set.names("crop_pixels")
 
-r_iri_resample <- terra::resample(x = r_iri,y = r_lulc_cropped)
+r_iri_resample <- terra::resample(x = r_iri,y = r_esa_cf_500m_cropped)
 ```
 
 We wrote out a sample raster that has combined bands and we can see it's huge (12 GB)
@@ -150,10 +153,9 @@ r_fprecip_crop %>%
   terra::writeRaster(filename = "202309_iri_croplands.tif")
 ```
 
-```{r}
-```
+```{r eval=F}
 
-```{r}
+## Tooo Slow and big!
 # raster list - pixel ≥ thresh
 rl_pixels_gte_thresh<- c(34:55)%>%  # loop through thresholds
   map(
@@ -163,7 +165,7 @@ rl_pixels_gte_thresh<- c(34:55)%>%  # loop through thresholds
       cat(thresh_prob,"\n")
       
       # start w/ a fresh copy of resampled IRI raster everytime
-      r_iri_resample_copy <- r_iri_resample
+      r_iri_resample_copy <- deepcopy(r_iri_resample)
       
       cat("making values < threshold NA\n")
       r_iri_resample_copy[r_iri_resample_copy<thresh_prob]<-NA
@@ -172,21 +174,33 @@ rl_pixels_gte_thresh<- c(34:55)%>%  # loop through thresholds
       r_iri_resample_copy[!is.na(r_iri_resample_copy)]<-1
       
       cat("multiplying by crop pixel raster\n")
-      r_pixels_cropland_gte_thresh <- r_iri_resample_copy*r_lulc_cropped
+      r_pixels_cropland_gte_thresh <- r_iri_resample_copy*r_esa_cf_500m_cropped
       
       cat("finished\n")
       return(r_pixels_cropland_gte_thresh)
     }
     )
 ```
+
+
+## Local Resample
+
+aggregate by 20x and we should have 10 km pixels
+```{r}
+aggregation_factor <- 20
+r_esa_cf_10km <- aggregate(r_esa_cf_500m_cropped, 
+                    fact = aggregation_factor,
+                    fun = sum)
+
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+# down to 1.4 mb - that's doable
+r_iri_resample_10km <- resample(x = r_iri,y = r_esa_cf_10km)
+r_iri_esa_10km <- rast(list(r_iri_resample_10km,r_esa_cf_10km))
+r_iri_esa_10km %>% 
+  terra::writeRaster(filename = "202309_iri_croplands_10km.tif")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
