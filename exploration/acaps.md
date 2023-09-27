@@ -34,56 +34,38 @@ cods = utils.load_drought_codabs()
 ```
 
 ```python
-cods
-```
-
-```python
-cods.explore()
-```
-
-```python
 # utils.process_acaps_seasonal()
 seasons = utils.load_acaps_seasonal_processed()
 seasons = seasons[seasons["has_codab"]]
-display(seasons)
-```
-
-```python
-seasons["event_type"].unique()
-```
-
-```python
-seasons["source"].unique()
-```
-
-```python
-seasons["label"].unique()
-```
-
-```python
-seasons[(seasons["iso"] == "NER")]["source"].unique()
-```
-
-```python
-seasons[(seasons["iso"] == "NER") & (seasons["source"] == "USDA")][
-    "label"
-].unique()
-```
-
-```python
 growing = seasons[seasons["event_type"] == "Planting and growing"]
 ```
 
 ```python
-growing["source"].value_counts()
+# check crops available for each source
+for source in growing["source"].unique():
+    print(source)
+    print(growing[growing["source"] == source]["label"].unique())
 ```
 
 ```python
-growing[growing["source"] == "FAO"]["iso"].unique()
+# count crops per adm1
+growing_agg = (
+    growing.groupby(["source", "iso", "ADM1_NUM"])
+    .nunique()["label"]
+    .reset_index()
+)
 ```
 
 ```python
-growing[growing["iso"] == "NER"]
+cod_crop = cods.merge(growing_agg, on=["iso", "ADM1_NUM"])
+```
+
+```python
+cod_crop[cod_crop["source"] == "FAO"].explore(column="label", vmin=0, vmax=7)
+```
+
+```python
+cod_crop[cod_crop["source"] == "USDA"].explore(column="label", vmin=0, vmax=7)
 ```
 
 ```python

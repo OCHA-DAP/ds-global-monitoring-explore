@@ -60,7 +60,7 @@ cod_crop = cod_asap.merge(crop_count[["asap1_id", "crop_name"]], on="asap1_id")
 
 ```python
 # plot by adm1
-cod_crop.explore(column="crop_name")
+cod_crop.explore(column="crop_name", vmin=0, vmax=7)
 ```
 
 ```python
@@ -79,7 +79,7 @@ cod0_crop = cod0_asap.merge(
 
 ```python
 # plot by adm0
-cod0_crop.explore(column="crop_name")
+cod0_crop.explore(column="crop_name", vmin=0, vmax=7)
 ```
 
 ```python
