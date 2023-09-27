@@ -61,6 +61,16 @@ seasons["label"].unique()
 ```
 
 ```python
+seasons[(seasons["iso"] == "NER")]["source"].unique()
+```
+
+```python
+seasons[(seasons["iso"] == "NER") & (seasons["source"] == "USDA")][
+    "label"
+].unique()
+```
+
+```python
 growing = seasons[seasons["event_type"] == "Planting and growing"]
 ```
 
@@ -73,7 +83,7 @@ growing[growing["source"] == "FAO"]["iso"].unique()
 ```
 
 ```python
-growing[growing["iso"] == "SOM"]
+growing[growing["iso"] == "NER"]
 ```
 
 ```python
