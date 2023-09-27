@@ -203,4 +203,9 @@ r_iri_esa_10km %>%
   terra::writeRaster(filename = "202309_iri_croplands_10km.tif")
 ```
 
+```{r}
+plot(r_iri_esa_10km)
+```
+
+
 
