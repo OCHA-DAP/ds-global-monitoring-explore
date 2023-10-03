@@ -1,10 +1,11 @@
 library(rgee)
 library(terra)
 library(tidyverse)
+library(sf)
 # ee_Initialize(gcs=TRUE)
 
 batch_process <- T
-write_outputs <- T
+write_resampled_rasters <- T
 # Set Data Paths ----------------------------------------------------------
 
 ## IRI Global Tif Paths #### 
@@ -26,14 +27,24 @@ out_dir_iri <- file.path(
 )
 
 ## ESA raster input ####
-fp_esa_frac <- file.path(
+pub_glb_processed <- file.path(
   Sys.getenv("AA_DATA_DIR"),
   "public",
   "processed",
-  "glb",
+  "glb")
+
+fp_esa_frac <- file.path(
+  pub_glb_processed,
   "landcover",
   "esa_world_cover"
 )
+fp_gdb_codab <- file.path(
+  pub_glb_processed,
+  "cod_ab",
+  "glb_drought_countries.shp"
+  )
+
+gdf_adm0 <-  st_read(fp_gdb_codab)
 
 ## FAO Global TIFF paths ####
 
@@ -122,6 +133,10 @@ crs(r_fao_cf)==crs(r_esa_cf_10km)
 
 # convert to decimal frac
 r_fao_10km_frac <- r_fao_10km/100
+
+
+Data/public/raw/
+
 
 # combine esa and fao crop frac
 r_esa_fao_10km <- rast(
