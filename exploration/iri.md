@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.6
+      jupytext_version: 1.15.2
   kernelspec:
     display_name: ds-global-monitoring-explore-39
     language: python
@@ -14,6 +14,9 @@ jupyter:
 ---
 
 # IRI
+
+Download and process IRI seasonal forecasts at global level.
+Save as COG as well as NetCDF.
 
 ```python
 %load_ext jupyter_black

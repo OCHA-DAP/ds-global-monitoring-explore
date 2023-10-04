@@ -15,6 +15,8 @@ jupyter:
 
 # FEWSNET livelihood zones
 
+Explore [FEWSNET livelihood zones](https://fews.net/data/livelihood-zones)
+
 ```python
 %load_ext jupyter_black
 %load_ext autoreload

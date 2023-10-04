@@ -6,16 +6,17 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.6
+      jupytext_version: 1.15.2
   kernelspec:
     display_name: ds-global-monitoring-explore
     language: python
     name: ds-global-monitoring-explore
 ---
 
-# ASAP
+# ASAP seasonal calendar
 
-[ASAP](https://agricultural-production-hotspots.ec.europa.eu/wexplorer/)
+Explore [ASAP](https://agricultural-production-hotspots.ec.europa.eu/wexplorer/)
+seasonal calendar data
 
 ```python
 %load_ext jupyter_black
@@ -54,7 +55,8 @@ crop_count = df.groupby(cols).nunique()["crop_name"].reset_index()
 
 ```python
 # join with CODAB
-# note - some asap1_ids don't match up
+# note - some asap1_ids don't match up,
+# hence will be missing from plot
 cod_crop = cod_asap.merge(crop_count[["asap1_id", "crop_name"]], on="asap1_id")
 ```
 

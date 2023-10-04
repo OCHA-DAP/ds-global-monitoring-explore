@@ -15,6 +15,13 @@ DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
 
 
 def load_acaps_seasonal_processed() -> pd.DataFrame:
+    """
+    Load processed ACAPS seasonal calendar
+
+    Returns
+    -------
+    df
+    """
     filepath = (
         DATA_DIR
         / "public/processed/glb/acaps/seasonal-events-calendar_processed.csv"
@@ -23,6 +30,15 @@ def load_acaps_seasonal_processed() -> pd.DataFrame:
 
 
 def process_acaps_seasonal():
+    """
+    Processes ACAPS seasonal calendar,
+    more or less to go from wide to long format.
+
+    Explodes label (typically crop type) and adm1 columns.
+    Returns
+    -------
+
+    """
     filepath = DATA_DIR / "public/raw/glb/acaps/seasonal-events-calendar.csv"
     df = pd.read_csv(filepath)
     # convert literals
@@ -100,7 +116,9 @@ def process_drought_codabs():
     """
     Merges all CODABs into one shp.
     Selects only those that are in ACAPS, and have an existing AnticiPy config.
-    :return:
+    Returns
+    -------
+
     """
     df = load_acaps_seasonal_processed()
     gdf = gpd.GeoDataFrame()
@@ -156,6 +174,8 @@ def approx_mask_raster(
     Uses as resample method nearest neighbour, i.e. aims to keep the values
     the same as the original data. Mainly used to create an approximate mask
     over an area
+
+    Taken from pa-aa-bfa-drought
 
     Parameters
     ----------

@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.6
+      jupytext_version: 1.15.2
   kernelspec:
     display_name: ds-global-monitoring-explore
     language: python
@@ -14,6 +14,8 @@ jupyter:
 ---
 
 # ACAPS seasonal calendar
+
+Explore [ACAPS seasonal calendar](https://data.humdata.org/dataset/acaps-seasonal-events-calendar-dataset).
 
 ```python
 %load_ext jupyter_black
@@ -30,6 +32,8 @@ from src import utils
 ```
 
 ```python
+# load CODABs for which we have AnticiPy country_config,
+# and are contained in the ACAPS dataset
 cods = utils.load_drought_codabs()
 ```
 
@@ -61,10 +65,12 @@ cod_crop = cods.merge(growing_agg, on=["iso", "ADM1_NUM"])
 ```
 
 ```python
+# show count of crops in FAO for each adm1
 cod_crop[cod_crop["source"] == "FAO"].explore(column="label", vmin=0, vmax=7)
 ```
 
 ```python
+# show count of crops in USDA for each adm1
 cod_crop[cod_crop["source"] == "USDA"].explore(column="label", vmin=0, vmax=7)
 ```
 
