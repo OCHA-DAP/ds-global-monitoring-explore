@@ -315,7 +315,7 @@ system.time(
 
       # reclassify all rasters in stack to binary based on threshold
       # this is the part the takes a while
-      cat("all values <= threshold reclassify to NA\n")
+      cat("all values < threshold reclassify to NA\n")
       r_iri_tmp[r_iri_tmp < thresh] <- NA
 
       cat("all values ≥ threshold make 1\n")
