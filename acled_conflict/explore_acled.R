@@ -623,3 +623,52 @@ bind_rows(
     fill = "Alert",
     title = "Country alerts generated from monthly anomalies >= 90%"
   )
+
+#################################
+#### Threshold determination ####
+#################################
+
+df_country_compare %>%
+  filter(
+    event_date >= "2018-01-01"
+  ) %>%
+  complete(
+    country,
+    event_date = seq.Date(
+      from = as.Date("2018-01-01"),
+      to = Sys.Date(),
+      by = "day"
+    ),
+    fill = list(
+      fatalities = 0,
+      events = 0
+    )
+  ) %>%
+  group_by(
+    country
+  ) %>%
+  mutate(
+    month = month(event_date),
+    year = year(event_date),
+    date = ymd(paste0(year, "-01-01")) + months(month - 1)
+  ) %>%
+  group_by(
+    country,
+    date,
+    year,
+    month
+  ) %>%
+  summarize(
+    events = sum(events),
+    fatalities = sum(fatalities),
+    .groups = "drop"
+  ) %>%
+  group_by(
+    country
+  ) %>%
+  mutate(
+    threshold_fatalities = quantile(fatalities, 0.9),
+    threshold_events = quantile(events, 0.9),
+    flag_fatalities = fatalities >= threshold_fatalities,
+    flag_events = events >= threshold_events
+  )
