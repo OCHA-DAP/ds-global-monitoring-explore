@@ -7,11 +7,138 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pycountry
+import shapely
 import xarray as xr
 from ochanticipy import CodAB, create_country_config
 from rasterio.enums import Resampling
+from shapely.validation import make_valid
 
 DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
+
+
+def process_fewsnet_lz_asap_adm_intersection():
+    """
+    Processes the intersection for all FEWSNET livelihood zones
+    with ASAP admin1s.
+    Returns
+    -------
+
+    """
+    adm1 = load_asap_adm(level=1).to_crs(3857)
+    lz = load_fewsnet_livelihoodzones().to_crs(3857)
+    fix_countries = {
+        "TZ": "United Republic of Tanzania",
+        "CD": "Democratic Republic of the Congo",
+    }
+    adm1_countries = adm1["name0"].unique()
+    adm1_drop_cols = [
+        "km2_tot",
+        "km2_crop",
+        "km2_range",
+        "an_crop",
+        "an_range",
+        "water_lim",
+    ]
+    lz_drop_cols = ["Shape_Leng", "Shape_Area"]
+    snap_tol = 1000
+    simplify_tol = 100
+
+    lz_adm1 = gpd.GeoDataFrame()
+    for alpha_2 in lz["COUNTRY"].unique():
+        country = pycountry.countries.get(alpha_2=alpha_2)
+        if country.name in adm1_countries:
+            name = country.name
+        else:
+            # assign countries when there isn't a match
+            name = fix_countries.get(alpha_2)
+        adm1_f = adm1[adm1["name0"] == name]
+        lz_f = lz[lz["COUNTRY"] == alpha_2]
+        # simplify shps to avoid messy geometries
+        adm1_f.loc[:, "geometry"] = adm1_f.geometry.simplify(simplify_tol)
+        lz_f.loc[:, "geometry"] = lz_f.geometry.simplify(simplify_tol)
+
+        # iterate over LZs
+        for _, row in lz_f.iterrows():
+            gdf_add = adm1_f.copy()
+            gdf_add = gdf_add.drop(columns=adm1_drop_cols)
+            # snap boundaries, to avoid thin slivers when they don't match up
+            gdf_add.geometry = shapely.snap(
+                gdf_add.geometry, row.geometry, tolerance=snap_tol
+            )
+            if not shapely.is_valid(row.geometry):
+                row.geometry = make_valid(row.geometry)
+            for i, x in gdf_add.iterrows():
+                if not shapely.is_valid(x.geometry):
+                    gdf_add.loc[i, "geometry"] = make_valid(x.geometry)
+            # calculate intersection
+            gdf_add.geometry = gdf_add.intersection(row.geometry)
+            gdf_add = gdf_add[~gdf_add.geometry.is_empty]
+            # remove geometries that aren't Polygons (ie LineStrings due to
+            # overlapping boundaries
+            gdf_add = gdf_add.explode(index_parts=True)
+            gdf_add = gdf_add[gdf_add.geometry.geom_type == "Polygon"]
+            # get rid of small areas due to imperfect alignment
+            # (these still exist, even with snapping)
+            gdf_add["area"] = gdf_add.area / 10e6
+            gdf_add = gdf_add[gdf_add["area"] > 1]
+            # aggregate geometries back together
+            gdf_add = gdf_add.dissolve("name1").reset_index()
+            gdf_add["area"] = gdf_add.area / 10e6
+            # put LZ info in
+            for col_name, value in row.items():
+                if col_name not in [*lz_drop_cols, "geometry"]:
+                    gdf_add[col_name] = value
+            lz_adm1 = pd.concat([lz_adm1, gdf_add], ignore_index=True)
+
+    # create unique ID for each LZ / ADM intersection
+    lz_adm1["FNID_asap1"] = (
+        lz_adm1["FNID"] + "_" + lz_adm1["asap1_id"].astype(str)
+    )
+    save_path = (
+        DATA_DIR
+        / "public/processed/glb/fewsnet_lz_asap_adm_intersection.shp.zip"
+    )
+    lz_adm1.to_file(save_path, encoding="utf-8")
+
+
+def load_fewsnet_lz_asap_adm_intersection() -> gpd.GeoDataFrame:
+    load_dir = DATA_DIR / "public/processed/glb"
+    filename = "fewsnet_lz_asap_adm_intersection.shp.zip"
+    zip_path = "zip:/" / load_dir / filename
+    gdf = gpd.read_file(zip_path)
+    return gdf
+
+
+def load_fewsnet_livelihoodzones() -> gpd.GeoDataFrame:
+    load_dir = DATA_DIR / "public/raw/glb/fewsnet"
+    filename = "FEWS_NET_LH_World.zip"
+    zip_path = "zip:/" / load_dir / filename
+    gdf = gpd.read_file(zip_path)
+    return gdf
+
+
+def load_asap_adm(level: int = 0) -> gpd.GeoDataFrame:
+    """
+    Load ASAP admin boundaries.
+    Note: not as up-to-date as those on HDX, but at least complete for the
+    whole world.
+
+    Parameters
+    ----------
+    level: int = 0
+        Admin level to load.
+        Note: there is a problem with level 2
+
+    Returns
+    -------
+    GeoDataFrame
+    """
+    load_dir = DATA_DIR / "public/raw/glb/asap/reference_data"
+    filename = f"gaul{level}_asap_v04.zip"
+    zip_path = "zip:/" / load_dir / filename
+    gdf = gpd.read_file(zip_path)
+    return gdf
 
 
 def load_acaps_seasonal_processed() -> pd.DataFrame:
