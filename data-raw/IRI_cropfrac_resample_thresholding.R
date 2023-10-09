@@ -28,6 +28,7 @@ library(terra)
 library(tidyverse)
 library(sf)
 library(exactextractr)
+library(arrow)
 
 map(list.files("R",full.names = T),\(fps){source(fps)})
 
@@ -55,9 +56,14 @@ fp_iri_tifs <- file.path(
 
 # where I will store the zonal stat results
 file_base_name_iri_zonal <-  paste0("iri_",processing_zonal_level,"_cropland_pct_thresholded.csv")
+parquet_file_base_name_iri_zonal <-  paste0("iri_",processing_zonal_level,"_cropland_pct_thresholded.parquet")
 fp_iri_zonal_output_csv <- file.path(
   fp_iri_processed,
   file_base_name_iri_zonal
+)
+fp_iri_zonal_output_parquet <- file.path(
+  fp_iri_processed,
+  parquet_file_base_name_iri_zonal
 )
 
 
@@ -126,8 +132,16 @@ gdf_adm0 <- gdf_adm1 %>%
 
 
 gdf_lhz <- st_read_zip(path = fp_gdb_lhz_adm)
-gdf_lhz %>% 
-  glimpse()
+
+# 2602 rows, but 2601 of these uid -- quick fix to merge the one duplicate
+# will probably be able to delete eventually
+gdf_lhz <- gdf_lhz %>% 
+  group_by(
+    FNID_asap1
+  ) %>% 
+  summarise() %>% 
+  ungroup()
+
 
 
 # Load IRI ----------------------------------------------------------------
@@ -303,14 +317,15 @@ fao_crop_mask <- ifel(r_fao_10km_frac == 0, NA, r_fao_10km_frac)
 
 if(processing_zonal_level=="lhz_adm1"){
   gdf_zone <-  gdf_lhz
+  retain_cols <- "FNID_asap1"
 }
 if(processing_zonal_level=="adm0"){
   gdf_zone <- gdf_adm0
+  
 }
 
-retain_cols <- gdf_zone %>% 
-  st_drop_geometry() %>% 
-  colnames()
+cat("only retaining ", retain_cols,"in zonal output \n")
+
 
 gdf_zone <- st_transform(x = gdf_zone,crs = st_crs(fao_crop_mask))
 # calculate total crop fraction per admin
@@ -393,4 +408,8 @@ df_zstats_thresholded <- bind_rows(ldf_thresholded)
 write_csv(
   df_zstats_thresholded,
   fp_iri_zonal_output_csv
+)
+write_parquet(
+  df_zstats_thresholded,
+  fp_iri_zonal_output_parquet
 )
