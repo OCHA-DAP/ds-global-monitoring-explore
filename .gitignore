@@ -16,3 +16,6 @@
 
 *.egg-info/
 __pycache__/
+
+# Mac
+.DS_Store

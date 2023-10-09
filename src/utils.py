@@ -115,6 +115,8 @@ def load_fewsnet_livelihoodzones() -> gpd.GeoDataFrame:
     filename = "FEWS_NET_LH_World.zip"
     zip_path = "zip:/" / load_dir / filename
     gdf = gpd.read_file(zip_path)
+    # correct for duplicate FNIDs
+    gdf = gdf.dissolve("FNID").reset_index()
     return gdf
 
 

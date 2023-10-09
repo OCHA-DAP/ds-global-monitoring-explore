@@ -24,17 +24,49 @@ Combining ASAP admin boundaries and FEWSNET livelihoods zones
 ```
 
 ```python
-import geopandas as gpd
-import pandas as pd
-import pycountry
-import shapely
-from shapely.validation import make_valid, explain_validity
+import os
+from pathlib import Path
 
 from src import utils
 ```
 
 ```python
-# utils.process_fewsnet_lz_asap_adm_intersection()
+utils.process_fewsnet_lz_asap_adm_intersection()
+```
+
+```python
 gdf = utils.load_fewsnet_lz_asap_adm_intersection()
-gdf.explore()
+gdf.explore(column="name0")
+```
+
+```python
+gdf.columns
+```
+
+```python
+gdf["MAINCROPS"].value_counts()
+```
+
+```python
+gdf["id_len"] = gdf["FNID_asap1"].apply(len)
+```
+
+```python
+gdf["id_len"].value_counts()
+```
+
+```python
+len(gdf["FNID_asap1"].unique())
+```
+
+```python
+len(gdf)
+```
+
+```python
+gdf[gdf.duplicated(subset=["FNID_asap1"], keep=False)]
+```
+
+```python
+
 ```
