@@ -300,15 +300,29 @@ r_iri_all %>%
 # create mask
 fao_crop_mask <- ifel(r_fao_10km_frac == 0, NA, r_fao_10km_frac)
 
+
+if(processing_zonal_level=="lhz_adm1"){
+  gdf_zone <-  gdf_lhz
+}
+if(processing_zonal_level=="adm0"){
+  gdf_zone <- gdf_adm0
+}
+
+retain_cols <- gdf_zone %>% 
+  st_drop_geometry() %>% 
+  colnames()
+
+gdf_zone <- st_transform(x = gdf_zone,crs = st_crs(fao_crop_mask))
 # calculate total crop fraction per admin
 # can use this later to calculate % cropland ≥ each threshold
-
-fao_adm0_crop_sum <- exact_extract(
+fao_zone_crop_sum <- exact_extract(
   x = fao_crop_mask,
-  y = gdf_adm0,
+  y = gdf_zone,
   fun = "sum",
-  append_cols = "iso"
+  append_cols = retain_cols
 )
+
+
 # apply to all IRI bands/layers
 r_iri_all_masked_fao <- mask(r_iri_all, fao_crop_mask)
 
@@ -336,25 +350,17 @@ system.time(
       cat("all values ≥ threshold make 1\n")
       r_iri_tmp[!is.na(r_iri_tmp)] <- 1
       r_iri_crop_frac <- r_iri_tmp * fao_crop_mask
-      
-      if(processing_zonal_level=="lhz_adm1"){
-        gdf_zone <-  gdf_lhz
-      }
-      if(processing_zonal_level=="adm0"){
-        gdf_zone <- gdf_adm0
-        
-      }
 
       # run zonal stats
       cat("Running zonal stats for ",processing_zonal_level,"\n")
       df_zstats <- exact_extract(r_iri_crop_frac,
         y = gdf_zone,
         fun = "sum",
-        append_cols =  colnames(gdf_zone)
+        append_cols =  retain_cols
       )
 
       ret <- df_zstats %>%
-        pivot_longer(-"iso") %>%
+        pivot_longer(-retain_cols) %>%
         separate(name,
           into = c("stat", "date"),
           sep = "\\."
@@ -371,9 +377,9 @@ system.time(
           crop_gte = "value"
         ) %>%
         left_join(
-          fao_adm0_crop_sum %>%
+          fao_zone_crop_sum %>%
             rename(total_crop = "sum"),
-          by = "iso"
+          by = retain_cols
         ) %>%
         mutate(
           pct_gte_thresh = crop_gte / total_crop
