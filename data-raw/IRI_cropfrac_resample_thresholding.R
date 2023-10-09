@@ -29,9 +29,13 @@ library(tidyverse)
 library(sf)
 library(exactextractr)
 
+map(list.files("R",full.names = T),\(fps){source(fps)})
+
 # conditional parameters - leave as false to not write out tifs again.
 write_resampled_iri <- F
 write_resampled_landcover <- F
+
+processing_zonal_level <- c("adm0","lhz_adm1")[2]
 
 # Set Data Paths ----------------------------------------------------------
 
@@ -50,9 +54,10 @@ fp_iri_tifs <- file.path(
 )
 
 # where I will store the zonal stat results
+file_base_name_iri_zonal <-  paste0("iri_",processing_zonal_level,"_cropland_pct_thresholded.csv")
 fp_iri_zonal_output_csv <- file.path(
   fp_iri_processed,
-  "iri_adm0_cropland_pct_thresholded.csv"
+  file_base_name_iri_zonal
 )
 
 
@@ -86,7 +91,11 @@ fp_gdb_codab <- file.path(
   "glb_drought_countries.shp"
 )
 
-
+# path to lhz admin intersection shapefile
+fp_gdb_lhz_adm <- file.path(
+  pub_glb_processed,
+  "fewsnet_lz_asap_adm_intersection.shp.zip"
+)
 
 
 ## FAO Global TIFF paths ####
@@ -114,6 +123,12 @@ gdf_adm1 <- st_read(fp_gdb_codab, layer = "glb_drought_countries.shp")
 gdf_adm0 <- gdf_adm1 %>%
   group_by(iso) %>%
   summarise()
+
+
+gdf_lhz <- st_read_zip(path = fp_gdb_lhz_adm)
+gdf_lhz %>% 
+  glimpse()
+
 
 # Load IRI ----------------------------------------------------------------
 
@@ -321,13 +336,21 @@ system.time(
       cat("all values ≥ threshold make 1\n")
       r_iri_tmp[!is.na(r_iri_tmp)] <- 1
       r_iri_crop_frac <- r_iri_tmp * fao_crop_mask
+      
+      if(processing_zonal_level=="lhz_adm1"){
+        gdf_zone <-  gdf_lhz
+      }
+      if(processing_zonal_level=="adm0"){
+        gdf_zone <- gdf_adm0
+        
+      }
 
       # run zonal stats
-      cat("zonal stats\n")
+      cat("Running zonal stats for ",processing_zonal_level,"\n")
       df_zstats <- exact_extract(r_iri_crop_frac,
-        y = gdf_adm0,
+        y = gdf_zone,
         fun = "sum",
-        append_cols = "iso"
+        append_cols =  colnames(gdf_zone)
       )
 
       ret <- df_zstats %>%
