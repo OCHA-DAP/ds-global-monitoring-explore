@@ -14,7 +14,72 @@ from ochanticipy import CodAB, create_country_config
 from rasterio.enums import Resampling
 from shapely.validation import make_valid
 
+from src.constants import asap1_seasonalcalendar2gaul
+
 DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
+
+
+def load_asap_seasonal() -> pd.DataFrame:
+    load_dir = DATA_DIR / "public/processed/glb/asap"
+    filename = "crop_calendar_gaul1_processed.csv"
+    return pd.read_csv(load_dir / filename)
+
+
+def process_asap_seasonal():
+    """
+    Process ASAP seasonal calendar.
+    Matches up adm1 codes to align with those in ASAP adm.
+    In some cases, this means that an admin2 gets assigned to be an admin1 -
+    in this case, the original name (admin2) will appear in brackets next to
+    the crop name in the crop_name column.
+    Returns
+    -------
+
+    """
+    asap_ref_dir = DATA_DIR / "public/raw/glb/asap/reference_data"
+    filestem = "crop_calendar_gaul1"
+    df = pd.read_csv(
+        asap_ref_dir / filestem / f"{filestem}.csv", delimiter=";"
+    )
+    cod_asap = load_asap_adm(level=1)
+    # check which asap1_ids don't match (all have matching asap0_ids)
+    df["adm1_match"] = df["asap1_id"].isin(cod_asap["asap1_id"])
+    missing_adm0s = df[~df["adm1_match"]]["asap0_id"].unique()
+    for adm0 in missing_adm0s:
+        # note: if prints nothing, because all admin1s accounted for
+        dff = df[
+            (df["asap0_id"] == adm0)
+            & (~df["adm1_match"])
+            & (~df["asap1_id"].isin(asap1_seasonalcalendar2gaul))
+        ]
+        if dff.empty:
+            # skip if already assigned fix
+            continue
+        print(adm0)
+        codf = cod_asap[cod_asap["asap0_id"] == adm0]
+        print(codf["name0"].iloc[0])
+        print("Missing adm1 match:")
+        print(dff[["asap1_id", "name1_shr"]].value_counts())
+        print("Possible adm1s:")
+        print(list(codf["asap1_id"].unique()))
+        print(codf[["asap1_id", "name1", "name1_shr"]].value_counts())
+        print()
+    df["asap1_id_match"] = df["asap1_id"].replace(asap1_seasonalcalendar2gaul)
+    df = df.explode("asap1_id_match")
+    df["name1_shr_match"] = df["asap1_id_match"].apply(
+        lambda x: cod_asap[cod_asap["asap1_id"] == x].iloc[0]["name1_shr"]
+    )
+    cols = ["crop_name", "asap1_id_match"]
+    df.loc[df[cols].duplicated(keep=False), "crop_name"] = df[
+        df[cols].duplicated(keep=False)
+    ].apply(lambda row: f"{row['crop_name']} ({row['name1_shr']})", axis=1)
+    # drop and rename columns
+    cols = ["asap1_id", "name1_shr", "adm1_match"]
+    df = df.drop(columns=cols)
+    df.columns = [x.removesuffix("_match") for x in df.columns]
+    save_dir = DATA_DIR / "public/processed/glb/asap"
+    save_path = save_dir / f"{filestem}_processed.csv"
+    df.to_csv(save_path, index=False)
 
 
 def process_fewsnet_lz_asap_adm_intersection():

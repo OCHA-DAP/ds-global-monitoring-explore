@@ -28,15 +28,12 @@ from pathlib import Path
 import os
 
 import geopandas as gpd
+
+from src import utils
 ```
 
 ```python
-DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
-```
-
-```python
-filepath = DATA_DIR / "public/raw/glb/fewsnet" / "FEWS_NET_LH_World.zip"
-gdf = gpd.read_file(f"zip:///{filepath}")
+gdf = utils.load_fewsnet_livelihoodzones()
 ```
 
 ```python
