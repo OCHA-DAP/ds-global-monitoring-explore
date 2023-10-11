@@ -37,15 +37,13 @@ from src import utils
 ```python
 # utils.process_asap_seasonal()
 df = utils.load_asap_seasonal()
-```
 
-```python
 df
 ```
 
 ```python
 # count unique crops per adm1
-cols = ["asap0_id", "name0_shr", "asap1_id_match", "name1_shr"]
+cols = ["asap0_id", "name0_shr", "asap1_id", "name1_shr"]
 crop_count = df.groupby(cols).nunique()["crop_name"].reset_index()
 ```
 
@@ -54,9 +52,8 @@ crop_count = df.groupby(cols).nunique()["crop_name"].reset_index()
 # note - some asap1_ids don't match up,
 # hence will be missing from plot
 cod_crop = cod_asap.merge(
-    crop_count[["asap1_id_match", "crop_name"]],
-    left_on="asap1_id",
-    right_on="asap1_id_match",
+    crop_count[["asap1_id", "crop_name"]],
+    on="asap1_id",
 )
 ```
 
@@ -73,7 +70,6 @@ crop0_count = df.groupby(cols).nunique()["crop_name"].reset_index()
 
 ```python
 # join with CODAB
-
 cod0_crop = cod0_asap.merge(
     crop0_count[["asap0_id", "crop_name"]], on="asap0_id"
 )

@@ -19,6 +19,23 @@ from src.constants import asap1_seasonalcalendar2gaul
 DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
 
 
+def load_lhz_adm1_crop_pct_thresh(fileformat: str = "parquet") -> pd.DataFrame:
+    load_dir = DATA_DIR / "private/processed/glb/iri"
+    filestem = "iri_lhz_adm1_cropland_pct_thresholded"
+    df = pd.read_parquet(load_dir / f"{filestem}.{fileformat}")
+    df["date"] = pd.to_datetime(df["date"])
+    df[["FNID", "asap1_id"]] = df["FNID_asap1"].str.split("_", expand=True)
+    df = df.drop(columns=["FNID_asap1"])
+    # manually specify dtypes because I think read_parquet can't
+    int_cols = ["asap1_id", "threshold", "leadtime"]
+    df[int_cols] = df[int_cols].astype(int)
+    str_cols = ["FNID", "stat"]
+    df[str_cols] = df[str_cols].astype(str)
+    flt_cols = ["crop_gte", "total_crop", "pct_gte_thresh"]
+    df[flt_cols] = df[flt_cols].astype(float)
+    return df
+
+
 def load_asap_seasonal() -> pd.DataFrame:
     load_dir = DATA_DIR / "public/processed/glb/asap"
     filename = "crop_calendar_gaul1_processed.csv"
