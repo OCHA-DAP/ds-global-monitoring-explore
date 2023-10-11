@@ -6,6 +6,7 @@
 *.tif
 *.tfw
 *.png
-
+*.parquet
 *.rds
+*.csv
 load_gc_creds.R
