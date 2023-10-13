@@ -1,0 +1,187 @@
+---
+title: "dasd"
+output: html_document
+date: "2023-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Intro
+
+```{r cars}
+library(tidyverse)
+library(terra)
+library(sf)
+library(countrycode)
+dir_pub <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "public",
+  "processed",
+  "glb"
+)
+
+gdb_adm0 <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "public",
+  "raw",
+  "glb",
+  "asap",
+  "reference_data",
+  "gaul0_asap_v04"
+)
+
+gdf_adm0 <- st_read(gdb_adm0, layer = "gaul0_asap")
+
+dir_priv <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "private",
+  "processed",
+  "glb"
+)
+dir(dir_priv)
+dir_phen <-  file.path(
+  dir_pub, 
+  "asap",
+  "season",
+  "month4"
+  )
+dir(dir_phen)
+dir_iri <-  file.path(
+  dir_priv,
+  "iri",
+  "tif",
+  "iri_tif_10km"
+)
+dir(dir_iri)
+
+
+
+# just a random sample for coding - will need to select based on IRI
+fp_phen <- file.path(
+  dir_phen,
+  # "inseason_months-9-10-11-12.tif"
+  "inseason_months-10-11-12-1.tif"
+  # "inseason_dekad25.tif"
+  )
+
+dir(dir_iri)
+
+fp_iri <- file.path(
+  dir_iri,
+  "glb_iri_bavg_2023-09-16.tif"
+ # "glb_iri_forecast_seasonal_precipitation_lower_tercile_prob_Np90Sm90Ep180Wm180_2023-09-16.tif" 
+)
+  
+r_phen <-  rast(fp_phen)
+r_iri <- rast(fp_iri)
+
+# good to crop here before creating mask as extent will change w/ NA imputed
+r_phen_crop <-  crop(r_phen,r_iri)
+
+mask_phen <- ifel(r_phen_crop ==1, 1,NA)
+```
+
+
+```{r}
+r_iri_composite <- max(r_iri)
+
+r_iri_1km <- resample(r_iri_composite, r_phen_crop)
+
+res(r_iri_1km)==res(r_phen)
+```
+
+
+```{r}
+plot(r_iri_composite )
+plot(r_iri_1km )
+# plot(r_phen)
+plot(mask_phen, add= T,color="black")
+
+
+# r_iri_masked <-  mask(r_iri_max, mask_phen) -- won't work
+ext(r_iri_max)
+ext(r_iri_1km)
+ext(mask_phen)
+ext(r_phen_crop)
+
+
+r_iri_masked <-  mask(r_iri_1km, mask_phen)
+plot(r_iri_masked)
+```
+
+  
+```{r}
+gdf_adm0 %>% 
+  filter(name0 %in%c("Ethiopia"))
+
+gdf_adm0 <- gdf_adm0 %>% 
+  mutate(
+    iso3 = countrycode(name0, "country.name.en", "iso3c"),
+    continent = countrycode(iso3, origin = "iso3c",destination = "continent"),
+  )
+
+gdf_aoi <- gdf_adm0 %>% 
+  filter(continent=="Africa")
+```
+
+```{r}
+library(gghdx)
+# install.packages("tidyterra")
+library(tidyterra)
+gghdx()
+
+r_iri_masked_cropped <-  crop(r_iri_masked, gdf_aoi)
+r_iri_masked_clipped <-  mask(r_iri_masked_cropped, gdf_aoi)
+
+r_iri_crop <-  crop(r_iri_composite, gdf_aoi)
+r_iri_clipped <-  mask(r_iri_crop, gdf_aoi)
+
+ggplot()+
+  geom_sf(
+    data= gdf_aoi
+  )+
+  geom_spatraster(
+   data= r_iri_clipped,na.rm = T
+  )+
+  scale_fill_continuous(na.value=NA)
+
+ggplot()+
+  geom_spatraster(
+   data= r_iri_masked_clipped
+  )+
+  scale_fill_steps2(
+    breaks = seq(30,55,by=5),
+  low = "yellow",
+  mid = "orange",
+  high = "red",
+  midpoint = 35,
+  space = "Lab",
+  na.value = NA,
+  guide = "coloursteps",
+  aesthetics = "fill",
+  name= "probabilty below\naverage forecast"
+)+
+    geom_sf(
+    data= gdf_aoi,
+    fill=NA,
+    color="black"
+  )+
+  # theme_void()+
+  labs(
+    title = "Seasonal below average rainfall forecast probability in\nareas with an active season 2023 October - 2024 March",
+    subtitle = "Date forecast: 2023 September\nPrediction: 2023 October - 2024 March",
+    caption = "Seasonal forecast: IRI\nSeasonal Calendar: ASAP\nMaximum below average probabilty calculated at pixel level over all 4 forecast leadtimes.\nActive season layer created by compositing all areas classified as 'active' over the next 4 months"
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    axis.line = element_blank(),
+    plot.caption = element_text(hjust = 0, size = 8)
+  )
+
+  
+```
+
