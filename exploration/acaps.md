@@ -45,6 +45,10 @@ growing = seasons[seasons["event_type"] == "Planting and growing"]
 ```
 
 ```python
+seasons
+```
+
+```python
 # check crops available for each source
 for source in growing["source"].unique():
     print(source)

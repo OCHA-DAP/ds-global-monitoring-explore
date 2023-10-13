@@ -3,20 +3,176 @@ import itertools
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pycountry
+import rioxarray as rxr
 import shapely
 import xarray as xr
 from ochanticipy import CodAB, create_country_config
 from rasterio.enums import Resampling
 from shapely.validation import make_valid
+from tqdm import tqdm
 
 from src.constants import asap1_seasonalcalendar2gaul
 
 DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
+
+
+def process_asap_phenology_dekads():
+    """
+    Takes ASAP phenology TIFs (start and end of seasons 1 and 2), and outputs
+    boolean for whether in season or not, by 1km pixel.
+    Returns
+    -------
+
+    """
+    # load ASAP TIFs
+    load_dir = DATA_DIR / "public/raw/glb/asap/reference_data"
+    das = []
+    for start_end in ["s", "e"]:
+        da_ses = []
+        for season in [1, 2]:
+            filestem = f"pheno{start_end}{season}_v03"
+            filename = f"{filestem}.tif"
+            da = rxr.open_rasterio(load_dir / filename)
+            da["start_end"] = start_end
+            da["season"] = season
+            da = da.squeeze(dim="band", drop=True)
+            da_ses.append(da)
+        da_se = xr.concat(da_ses, dim="season")
+        das.append(da_se)
+    da = xr.concat(das, dim="start_end")
+
+    # iterate over longitudes
+    # Note: this is probably a pretty slow way of doing this, but doing the
+    # whole thing at once takes up too much memory and crashes.
+    # It seems like even iterating over start/end and season 1/2 doesn't work.
+    dekads = range(1, 37)
+    da_ds = []
+    for lon in tqdm(range(-180, 181)):
+        da_f = da.sel(x=slice(lon, (lon + 1)))
+        # ensure that the order of the dims is correct
+        dims = [x for x in da_f.dims if x in ["x", "y"]] + ["dekad"]
+        da_d = xr.DataArray(
+            dims=dims, coords={"y": da_f.y, "x": da_f.x, "dekad": dekads}
+        )
+        da_d.rio.write_crs(4326, inplace=True)
+        da_d = da_d.rio.set_spatial_dims("x", "y", inplace=True)
+        # da_d = da_d.astype("uint8")
+        for dekad in dekads:
+            da_d.loc[{"dekad": dekad}] = (
+                (
+                    # year 1
+                    # season 1
+                    (da_f.sel(season=1, start_end="s") <= dekad)
+                    & (da_f.sel(season=1, start_end="e") >= dekad)
+                )
+                | (
+                    # season 2
+                    (da_f.sel(season=2, start_end="s") <= dekad)
+                    & (da_f.sel(season=2, start_end="e") >= dekad)
+                )
+                | (
+                    # year 2
+                    # season 1
+                    (da_f.sel(season=1, start_end="s") <= dekad + 36)
+                    & (da_f.sel(season=1, start_end="e") >= dekad + 36)
+                )
+                | (
+                    # season 2
+                    (da_f.sel(season=2, start_end="s") <= dekad + 36)
+                    & (da_f.sel(season=2, start_end="e") >= dekad + 36)
+                )
+                | (
+                    # year 3
+                    # season 1
+                    (da_f.sel(season=1, start_end="s") <= dekad + 72)
+                    & (da_f.sel(season=1, start_end="e") >= dekad + 72)
+                )
+                | (
+                    # season 2
+                    (da_f.sel(season=2, start_end="s") <= dekad + 72)
+                    & (da_f.sel(season=2, start_end="e") >= dekad + 72)
+                )
+            )
+        da_ds.append(da_d.astype("uint8"))
+    da_da = xr.concat(da_ds, dim="x")
+
+    # save
+    # File too big to save as 36-band raster, so must save as multiple files
+    # Note that saving as an actual Boolean in a NetCDF is even bigger somehow.
+    save_dir = DATA_DIR / "public/processed/glb/asap/season/dekad"
+    for dekad in tqdm(dekads):
+        filename = f"inseason_dekad{dekad}.tif"
+        da_da.sel(dekad=dekad).rio.to_raster(save_dir / filename, driver="COG")
+
+
+def load_inseason(
+    interval: Literal["dekad", "month", "forecast_base_month"], number: int
+) -> xr.DataArray:
+    """
+    Loads 1km resolution global raster with boolean for whether each pixel is
+    in season.
+    Parameters
+    ----------
+    interval: Literal["dekad", "month", "forecast_base_month"]
+        The interval for which the in season is loaded.
+        E.g. for January, internal = "month"
+        Longer intervals are aggregates using any() of shorter intervals.
+    number: int
+        The number of the interval. E.g. for January, number = 1
+
+    Returns
+    -------
+    xr.DataArray
+    """
+    file_interal = interval
+    if interval == "forecast_base_month":
+        interval = "month4"
+        file_interal = "months-"
+        number = "-".join([str(x) for x in range(number + 1, number + 5)])
+    load_dir = DATA_DIR / f"public/processed/glb/asap/season/{interval}"
+    filename = f"inseason_{file_interal}{number}.tif"
+    da = rxr.open_rasterio(load_dir / filename)
+    return da
+
+
+def process_asap_phenology_months():
+    months = range(1, 13)
+    month_dir = DATA_DIR / "public/processed/glb/asap/season/month"
+    for month in tqdm(months):
+        da_ins = []
+        for dekad in range((month - 1) * 3 + 1, month * 3 + 1):
+            da_in = load_inseason("dekad", dekad).squeeze(drop=True)
+            da_in["dekad"] = dekad
+            da_ins.append(da_in)
+        da_dekads = xr.concat(da_ins, dim="dekad")
+        da_m = da_dekads.max(dim="dekad")
+        filename = f"inseason_month{month}.tif"
+        da_m.rio.to_raster(month_dir / filename, driver="COG")
+
+
+def process_asap_phenology_forecast_base_months():
+    months = range(1, 13)
+    month4_dir = DATA_DIR / "public/processed/glb/asap/season/month4"
+    for month in tqdm(months):
+        rel_months = [
+            str(x) if x < 13 else str(x - 12)
+            for x in range(month + 1, month + 5)
+        ]
+        da_ins = []
+        for rel_month in rel_months:
+            da_in = load_inseason("month", int(rel_month)).squeeze(drop=True)
+            da_in["month"] = rel_month
+            da_ins.append(da_in)
+        da_relmonths = xr.concat(da_ins, dim="month")
+        da_4m = da_relmonths.max(dim="month")
+        filename = f"inseason_months-{'-'.join(rel_months)}.tif"
+        da_4m.rio.to_raster(month4_dir / filename, driver="COG")
 
 
 def load_lhz_adm1_crop_pct_thresh(fileformat: str = "parquet") -> pd.DataFrame:
