@@ -1,0 +1,143 @@
+---
+title: "IRI Cropland Thresholds"
+output: html_document
+date: "2023-10-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Intro
+
+**Note:** No review needed at the moment
+
+Exploratory script to look visualize IRI cropland thresholds for HNO countries. The data was processed in `data-raw/IRI_cropfrac_resample_thresholding.R` The  processed involved resampling FAO cropland fraction raster to data and IRI seasonal forecast to 10 km.  Then we iterated through thresholds 30-55 (probability below average rainfall) and calculated the % of cropland area that was above the threshold per zonal unit. Zonal units were adm0 level HNO countries as well as adm1 level polygons intersected with livelihood zones. The results were exported as data.frames to csvs.
+
+This script begins to explore the adm0 level csv. It does not include phenology or crop information so is not really what we need at the moment, but might be useful at some point to expand on to better understand the distribution of IRI values over time across croplands over different zones. For now it can stay in `exploration` and `no review required`
+
+```{r cars}
+library(tidyverse)
+library(arrow)
+library(gghdx)
+library(countrycode)
+gghdx()
+fp_iri_processed <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "private",
+  "processed",
+  "glb",
+  "iri"
+)
+dir(fp_iri_processed)
+
+fp_adm0<- file.path(fp_iri_processed, "iri_adm0_cropland_pct_thresholded.csv")
+df_adm0 <- read_csv(fp_adm0)
+
+```
+
+```{r}
+
+df_adm0 <- df_adm0 %>% 
+  mutate(
+    country = countrycode(iso, "iso3c", "country.name.en"),
+    continent = countrycode(iso, origin = "iso3c",destination = "continent"),
+    cont_group=case_when(
+      country %in% c(
+        "Burkina Faso",
+        "Chad",
+        "Niger",
+        "Mali",
+        "Cameroon","Nigeria")~ "West Africa",
+      country %in% c(
+        "Central African Republic","Burundi",
+        "Mozambique","Ethiopia","Congo - Kinshasa",
+        "Burundi","Sudan","Somalia"
+      )~"Central-East Africa",
+      country %in% c(
+        "Afghanistan",
+        "Pakistan",
+        "Yemen",
+        "Syria","Iraq","Iran","Libya","Palestinian Territories"
+      )~"Middle East",
+      .default = continent
+        
+      )
+    )
+df_adm0 %>% count(country,iso,cont_group) %>% print(n=nrow(.))
+df_adm0 %>% 
+  # filter(leadtime==1) %>% 
+  select(iso, date,leadtime, threshold, pct_gte_thresh) %>% 
+  group_by(iso,leadtime, threshold) %>% 
+  summarise(mean_pct_gte_thresh = mean(pct_gte_thresh)) %>% 
+  ggplot(aes(x=threshold, y=mean_pct_gte_thresh,color=iso)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~leadtime)
+  
+
+df_adm0 %>% 
+  group_by(continent,leadtime, threshold) %>% 
+  summarise(mean_pct_gte_thresh = mean(pct_gte_thresh)) %>%
+  filter(
+    leadtime==1
+  ) %>% 
+  ggplot(aes(x=threshold, y=mean_pct_gte_thresh,color=continent)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x= "IRI threshold",
+    y= "% Cropland",
+    title = "IRI Cropland Thresholds"
+  )
+
+```
+
+```{r}
+
+df_adm0_summarised_lts <- df_adm0 %>%
+  select(cont_group,country, threshold,leadtime, pct_gte_thresh) %>% 
+  group_by(cont_group,country, threshold) %>% 
+  # take max across leadtimes
+  summarise(
+    pct_gte_thresh = max(pct_gte_thresh),.groups="keep"
+  ) %>% 
+  summarise(mean_pct_gte_thresh = mean(pct_gte_thresh)) 
+
+continent_names <- df_adm0_summarised_lts$cont_group %>% unique()
+
+p_threshold_by_cont  <- 
+  map(set_names(continent_names),
+      \(continent_name){
+        df_adm0_summarised_lts %>% 
+          filter(cont_group==continent_name) %>% 
+          ggplot(aes(x=threshold, y=mean_pct_gte_thresh,color=country)) +
+          geom_line() +
+          geom_point() +
+          theme(
+            legend.title = element_blank(),
+            axis.title = element_blank(),
+            plot.title = element_text(size=10),
+            axis.text.x = element_text(angle=90),
+            legend.text = element_text(size=8),legend.key = element_rect(size=3),
+            panel.border = element_rect(color="grey", fill = NA)
+          )
+      }
+  )
+library(patchwork)
+p_threshold_by_cont$`West Africa`+
+p_threshold_by_cont$`Central-East Africa`+
+p_threshold_by_cont$`Middle East`+
+  p_threshold_by_cont$Asia+
+  p_threshold_by_cont$Europe+
+  p_threshold_by_cont$Americas+
+   plot_annotation(
+    title = "% Cropland ≥ IRI Threshold for all HNO Countries"
+    )+
+  plot_layout(ncol=3)
+  
+
+
+```
+
