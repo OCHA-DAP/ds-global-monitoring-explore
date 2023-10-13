@@ -30,7 +30,7 @@ from src import utils
 ```python
 # utils.process_asap_phenology_dekads()
 # utils.process_asap_phenology_months()
-# utils.process_asap_phenology_forecast_base_months()
+utils.process_asap_phenology_n_month_chunks(n=3)
 ```
 
 ```python

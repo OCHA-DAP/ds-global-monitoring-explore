@@ -156,13 +156,15 @@ def process_asap_phenology_months():
         da_m.rio.to_raster(month_dir / filename, driver="COG")
 
 
-def process_asap_phenology_forecast_base_months():
+def process_asap_phenology_n_month_chunks(n: int):
     months = range(1, 13)
-    month4_dir = DATA_DIR / "public/processed/glb/asap/season/month4"
+    month_n_dir = DATA_DIR / f"public/processed/glb/asap/season/month{n}"
+    if n == 3:
+        month_n_dir = DATA_DIR / "public/processed/glb/asap/season/trimester"
     for month in tqdm(months):
         rel_months = [
             str(x) if x < 13 else str(x - 12)
-            for x in range(month + 1, month + 5)
+            for x in range(month + 1, month + 1 + n)
         ]
         da_ins = []
         for rel_month in rel_months:
@@ -170,9 +172,9 @@ def process_asap_phenology_forecast_base_months():
             da_in["month"] = rel_month
             da_ins.append(da_in)
         da_relmonths = xr.concat(da_ins, dim="month")
-        da_4m = da_relmonths.max(dim="month")
+        da_nm = da_relmonths.max(dim="month")
         filename = f"inseason_months-{'-'.join(rel_months)}.tif"
-        da_4m.rio.to_raster(month4_dir / filename, driver="COG")
+        da_nm.rio.to_raster(month_n_dir / filename, driver="COG")
 
 
 def load_lhz_adm1_crop_pct_thresh(fileformat: str = "parquet") -> pd.DataFrame:
