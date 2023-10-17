@@ -51,6 +51,7 @@ def process_asap_phenology_dekads():
     # Note: this is probably a pretty slow way of doing this, but doing the
     # whole thing at once takes up too much memory and crashes.
     # It seems like even iterating over start/end and season 1/2 doesn't work.
+    # Hence the for loop arbitrarily over longitude.
     dekads = range(1, 37)
     da_ds = []
     for lon in tqdm(range(-180, 181)):
@@ -101,6 +102,12 @@ def process_asap_phenology_dekads():
             )
         da_ds.append(da_d.astype("uint8"))
     da_da = xr.concat(da_ds, dim="x")
+    # re-apply mask / error values based on season 1 start
+    da_da = xr.where(
+        da.sel(season=1, start_end="s") > 250,
+        da.sel(season=1, start_end="s"),
+        da_da,
+    )
 
     # save
     # File too big to save as 36-band raster, so must save as multiple files
@@ -112,32 +119,46 @@ def process_asap_phenology_dekads():
 
 
 def load_inseason(
-    interval: Literal["dekad", "month", "forecast_base_month"], number: int
+    interval: Literal["dekad", "month", "trimester_any", "trimester_sum"],
+    number: int,
+    agg: Literal["any", "sum"] = None,
 ) -> xr.DataArray:
     """
     Loads 1km resolution global raster with boolean for whether each pixel is
     in season.
     Parameters
     ----------
-    interval: Literal["dekad", "month", "forecast_base_month"]
+    interval: Literal["dekad", "month", "trimester_any", "trimester_sum"]
         The interval for which the in season is loaded.
         E.g. for January, internal = "month"
         Longer intervals are aggregates using any() of shorter intervals.
     number: int
-        The number of the interval. E.g. for January, number = 1
+        The number of the interval. For trimester, the number of the month
+        preceding the trimester.
+        E.g. for January, number = 1; for JAS trimester, number = 5 (June)
+    agg
 
     Returns
     -------
     xr.DataArray
     """
     file_interal = interval
-    if interval == "forecast_base_month":
-        interval = "month4"
+    if agg is None:
+        dekad, agg = "", ""
+    else:
+        dekad = "_dekad_"
+    if interval == "trimester":
+        interval = f"trimester_{agg}"
         file_interal = "months-"
-        number = "-".join([str(x) for x in range(number + 1, number + 5)])
+        number = "-".join(
+            [
+                str(x) if x < 13 else str(x - 12)
+                for x in range(number + 1, number + 4)
+            ]
+        )
     load_dir = DATA_DIR / f"public/processed/glb/asap/season/{interval}"
-    filename = f"inseason_{file_interal}{number}.tif"
-    da = rxr.open_rasterio(load_dir / filename)
+    filename = f"{agg}{dekad}inseason_{file_interal}{number}.tif"
+    da = rxr.open_rasterio(load_dir / filename).astype("uint8")
     return da
 
 
@@ -156,25 +177,45 @@ def process_asap_phenology_months():
         da_m.rio.to_raster(month_dir / filename, driver="COG")
 
 
-def process_asap_phenology_n_month_chunks(n: int):
+def process_asap_phenology_trimesters(agg: Literal["any", "sum"]):
+    if agg not in ["any", "sum"]:
+        raise ValueError("Agg must be 'any' or 'sum'")
     months = range(1, 13)
-    month_n_dir = DATA_DIR / f"public/processed/glb/asap/season/month{n}"
-    if n == 3:
-        month_n_dir = DATA_DIR / "public/processed/glb/asap/season/trimester"
+    tri_dir = DATA_DIR / f"public/processed/glb/asap/season/trimester_{agg}"
     for month in tqdm(months):
+        da_ins = []
         rel_months = [
             str(x) if x < 13 else str(x - 12)
-            for x in range(month + 1, month + 1 + n)
+            for x in range(month + 1, month + 4)
         ]
-        da_ins = []
-        for rel_month in rel_months:
-            da_in = load_inseason("month", int(rel_month)).squeeze(drop=True)
-            da_in["month"] = rel_month
-            da_ins.append(da_in)
-        da_relmonths = xr.concat(da_ins, dim="month")
-        da_nm = da_relmonths.max(dim="month")
-        filename = f"inseason_months-{'-'.join(rel_months)}.tif"
-        da_nm.rio.to_raster(month_n_dir / filename, driver="COG")
+        if agg == "any":
+            for rel_month in rel_months:
+                da_in = load_inseason("month", int(rel_month)).squeeze(
+                    drop=True
+                )
+                da_in["month"] = rel_month
+                da_ins.append(da_in)
+            da_relmonths = xr.concat(da_ins, dim="month")
+            da_nm = da_relmonths.max(dim="month")
+        elif agg == "sum":
+            dekads = [
+                str(x) if x < 37 else str(x - 36)
+                for x in range(month * 3 + 1, (month + 3) * 3 + 1)
+            ]
+            for dekad in dekads:
+                da_in = load_inseason("dekad", int(dekad)).squeeze(drop=True)
+                da_in["dekad"] = dekad
+                da_ins.append(da_in)
+            da_relmonths = xr.concat(da_ins, dim="dekad")
+            # keep as uint8 to keep size down
+            da_nm = da_relmonths.sum(dim="dekad").astype("uint8")
+            # It seems like the best way to mask is by just using the mask of
+            # the dekad raster. Other options like .where(da_in != 255) don't
+            # work because xr.where() always outputs a float, which ends up
+            # being too big and crashes.
+            da_nm = xr.where(da_in > 250, da_in, da_nm)
+        filename = f"{agg}_dekad_inseason_months-{'-'.join(rel_months)}.tif"
+        da_nm.rio.to_raster(tri_dir / filename, driver="COG")
 
 
 def load_lhz_adm1_crop_pct_thresh(fileformat: str = "parquet") -> pd.DataFrame:
