@@ -15,6 +15,13 @@ library(tidyverse)
 library(terra)
 library(sf)
 library(countrycode)
+library(gghdx)
+library(tidyterra)
+library(glue)
+gghdx()
+```
+
+```{r}
 dir_pub <- file.path(
   Sys.getenv("AA_DATA_DIR"),
   "public",
@@ -40,12 +47,11 @@ dir_priv <- file.path(
   "processed",
   "glb"
 )
-dir(dir_priv)
+
 dir_phen <-  file.path(
   dir_pub, 
   "asap",
-  "season",
-  "month4"
+  "season"
   )
 dir(dir_phen)
 dir_iri <-  file.path(
@@ -57,43 +63,133 @@ dir_iri <-  file.path(
 dir(dir_iri)
 
 
+months3_files <- c("inseason_months-10-11-12.tif",
+  "inseason_months-11-12-1.tif",
+  "inseason_months-12-1-2.tif", 
+  "inseason_months-1-2-3.tif"
+)
 
-# just a random sample for coding - will need to select based on IRI
-fp_phen <- file.path(
+dir_months3 <- file.path(
   dir_phen,
-  # "inseason_months-9-10-11-12.tif"
-  "inseason_months-10-11-12-1.tif"
-  # "inseason_dekad25.tif"
+  "trimester_any"
   )
+r_phen_m3 <- rast(
+  str_subset(
+  list.files(dir_months3,full.names = T),
+  glue_collapse(paste0(months3_files,"$"),sep = "|"))
+  )
+# load individual month active
 
-dir(dir_iri)
+new_phen_name <- tibble(
+  mo_combo = str_extract_all(names(r_phen_m3), "\\d.*") %>% 
+         unlist()
+  ) %>% 
+  separate(
+    mo_combo,into = c("mo1","mo2","mo3"),sep = "-"
+  ) %>%
+  mutate(
+  across(
+    everything(),~month(as.numeric(.x),label=T)
+  )  
+  ) %>% 
+  unite("new_name",everything(),sep = "-") %>% 
+  pull(new_name)
 
+r_phen_m3 %>% 
+  set.names(
+    new_phen_name
+  )
+  
 fp_iri <- file.path(
   dir_iri,
   "glb_iri_bavg_2023-09-16.tif"
  # "glb_iri_forecast_seasonal_precipitation_lower_tercile_prob_Np90Sm90Ep180Wm180_2023-09-16.tif" 
 )
-  
-r_phen <-  rast(fp_phen)
+
+# load IRI
 r_iri <- rast(fp_iri)
 
 # good to crop here before creating mask as extent will change w/ NA imputed
-r_phen_crop <-  crop(r_phen,r_iri)
+r_phen_m3_crop <-  crop(r_phen_m3,r_iri)
+mask_phen_m3 <- ifel(r_phen_m3_crop ==1, 1,NA)
 
-mask_phen <- ifel(r_phen_crop ==1, 1,NA)
 ```
 
 
+
 ```{r}
-r_iri_composite <- max(r_iri)
+# make composite from 4 leadtimes of IRI
+r_iri_lts <- r_iri[[c("lt1","lt2","lt3","lt4")]]
+r_iri_composite <- max(r_iri_lts)
 
-r_iri_1km <- resample(r_iri_composite, r_phen_crop)
 
-res(r_iri_1km)==res(r_phen)
+# make names for lts to months predicted so that we can match them w/ individual phenology months
+iri_pub_date <- as_date(
+  str_extract_all(basename(sources(r_iri_lts)),
+                  "\\d{4}-\\d{2}-\\d{2}") %>% 
+                          unlist()
+  )
+
+new_names <- seq(
+  # sequence of months from 1 month after to 4 month after publication (trimester)
+  iri_pub_date+months(1),
+  # 4 month after publication
+  iri_pub_date+ months(4),
+  by ="month"
+) %>% 
+  map_chr(
+    \(mo_start)
+    format(seq(mo_start, mo_start+months(2), by="month"),"%b") %>% 
+      glue_collapse(sep = "-")
+  ) 
+
+r_iri_lts %>% 
+  set.names(new_names)
+
+
+# iri_mo_predicted <- as.character(
+#   month(iri_pub_date+ months(parse_number(names(r_iri_lts))),label=T))
+# r_iri_lts %>% 
+#   set.names(iri_mo_predicted)
+
+```
+
+```{r}
+# resample sample IRI to 1 km
+
+# resample composite IRI to crop phenology resolution (1 km)
+# Note - default sampling will use bilinear interpolation which will 
+# affect visualization - should discuss
+r_iri_composite_1km <- resample(r_iri_composite, r_phen_m3_crop)
+
+# resamle individual IRI lts to crop phenology resolution (1km)
+# r_iri_lts_1km <- resample(r_iri_lts, r_phen_m4_crop)
+r_iri_lts_1km <- resample(r_iri_lts, r_phen_m3_crop)
+
+# check
+res(r_iri_lts_1km)==res(r_phen_m3_crop)
+
+
+# this doesn't really make sense anymroe
+r_iri_composite_masked <-  mask(r_iri_composite_1km, r_phen_m3_crop)
+
+
+# mask IRI individual leadtimes w/ trimester  active mask - returns list
+# this takes a minute or 2
+
+# check
+setdiff(names(r_iri_lts_1km),names(mask_phen_m3))
+
+lr_iri_lts_masked <- names(r_iri_lts_1km) %>% 
+  map(
+    \(mo_temp){
+      mask(r_iri_lts_1km[[mo_temp]], mask_phen_m3[[mo_temp]])
+    }
+  )
 ```
 
 
-```{r}
+```{r eval=F}
 plot(r_iri_composite )
 plot(r_iri_1km )
 # plot(r_phen)
@@ -106,8 +202,9 @@ ext(r_iri_1km)
 ext(mask_phen)
 ext(r_phen_crop)
 
+r_iri_composite_masked <-  mask(r_iri_composite_1km, mask_phen_m4)
 
-r_iri_masked <-  mask(r_iri_1km, mask_phen)
+
 plot(r_iri_masked)
 ```
 
@@ -126,28 +223,14 @@ gdf_aoi <- gdf_adm0 %>%
   filter(continent=="Africa")
 ```
 
-```{r}
-library(gghdx)
-# install.packages("tidyterra")
-library(tidyterra)
-gghdx()
+# Composite 4 month map
 
-r_iri_masked_cropped <-  crop(r_iri_masked, gdf_aoi)
+```{r}
+r_iri_masked_cropped <-  crop(r_iri_composite_masked, gdf_aoi)
 r_iri_masked_clipped <-  mask(r_iri_masked_cropped, gdf_aoi)
 
-r_iri_crop <-  crop(r_iri_composite, gdf_aoi)
-r_iri_clipped <-  mask(r_iri_crop, gdf_aoi)
 
-ggplot()+
-  geom_sf(
-    data= gdf_aoi
-  )+
-  geom_spatraster(
-   data= r_iri_clipped,na.rm = T
-  )+
-  scale_fill_continuous(na.value=NA)
-
-ggplot()+
+p_map_composite_4 <- ggplot()+
   geom_spatraster(
    data= r_iri_masked_clipped
   )+
@@ -170,8 +253,8 @@ ggplot()+
   )+
   # theme_void()+
   labs(
-    title = "Seasonal below average rainfall forecast probability in\nareas with an active season 2023 October - 2024 March",
-    subtitle = "Date forecast: 2023 September\nPrediction: 2023 October - 2024 March",
+    title = "Seasonal below average rainfall forecast probability in\nareas with an active season 2023 October - 2024 January",
+    subtitle = "Date forecast: 2023 September\nPrediction: 2023 October - 2024 January",
     caption = "Seasonal forecast: IRI\nSeasonal Calendar: ASAP\nMaximum below average probabilty calculated at pixel level over all 4 forecast leadtimes.\nActive season layer created by compositing all areas classified as 'active' over the next 4 months"
   )+
   theme(
@@ -184,4 +267,188 @@ ggplot()+
 
   
 ```
+
+# Month by Month
+```{r}
+
+lr_iri_masked_clipped <- lr_iri_lts_masked %>% 
+  map(
+    \(r){
+      r_cropped <- crop(r, gdf_aoi)
+      r_clipped <- mask(r_cropped, gdf_aoi)
+      return(r_clipped  )
+    }
+  )
+
+# map through
+p_map_indiv_mo <- lr_iri_masked_clipped %>% 
+  map(\(r){
+  mo_predicted <- names(r)
+  # hacky since i don't want to process the rasters right now:
+  mo_yr_predicted<- ifelse(mo_predicted!="Jan",paste0("2023 ", mo_predicted),paste0("2024 ",mo_predicted))
+  
+    ggplot()+
+  geom_spatraster(
+   data= r
+  )+
+  scale_fill_steps2(
+    breaks = seq(30,55,by=5),
+  low = "yellow",
+  mid = "orange",
+  high = "red",
+  midpoint = 35,
+  space = "Lab",
+  na.value = NA,
+  guide = "coloursteps",
+  aesthetics = "fill",
+  name= "probabilty below\naverage forecast"
+)+
+    geom_sf(
+    data= gdf_aoi,
+    fill=NA,
+    color="black"
+  )+
+  # theme_void()+
+  labs(
+    title = glue("Seasonal below average rainfall forecast probability in\nareas with an active season {mo_yr_predicted}"),
+    subtitle = glue("Date forecast: 2023 September\nPrediction: {mo_yr_predicted}"),
+    caption = "Seasonal forecast: IRI\nSeasonal Calendar: ASAP\nActive season layer created by compositing all areas classified as 'active' over the month"
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    axis.line = element_blank(),
+    plot.caption = element_text(hjust = 0, size = 8)
+  )
+    
+  })
+
+
+```
+
+# faceted trimester
+
+```{r}
+# try the above but faceted to get the benefits of facet (i.e not multiple legend/titles)
+# lr_iri_lts_masked
+r_iri_lts_masked<- rast(lr_iri_lts_masked)
+r_iri_lts_masked_cropped <- crop(r_iri_lts_masked, gdf_aoi)
+r_iri_lts_masked_clipped <- mask(r_iri_lts_masked_cropped, gdf_aoi)
+
+
+# hacky reset names:
+# names_new <- ifelse(names(r_iri_lts_masked_clipped)!="Jan",
+#        paste0(names(r_iri_lts_masked_clipped)," 2023"),
+#        paste0(names(r_iri_lts_masked_clipped)," 2024"))
+# 
+# r_iri_lts_masked_clipped %>% 
+#   set.names(
+#     names_new
+#   )
+#     
+
+# try above w/ facet
+p_map_iri_faceted <- ggplot()+
+  geom_spatraster(
+   data= r_iri_lts_masked_clipped
+  )+
+  scale_fill_steps2(
+    breaks = seq(30,55,by=5),
+  low = "yellow",
+  mid = "orange",
+  high = "red",
+  midpoint = 35,
+  space = "Lab",
+  na.value = NA,
+  guide = "coloursteps",
+  aesthetics = "fill",
+  name= "probabilty below\naverage forecast"
+)+
+    facet_wrap(~lyr)+
+    geom_sf(
+    data= gdf_aoi,
+    fill=NA,
+    color="black"
+  )+
+  labs(
+    title = glue("Seasonal below average rainfall forecast probability in\nareas with an active season"),
+    subtitle = glue("Date forecast: 2023 September\nPrediction: 2023 October - 2024 March"),
+    caption = "Seasonal forecast: IRI\nSeasonal Calendar: ASAP\nActive season layer created by compositing all areas classified as 'active' over the 3 month period"
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    axis.line = element_blank(),
+    plot.caption = element_text(hjust = 0, size = 8)
+  )
+```
+
+
+```{r}
+dir_iri_1degree <-  file.path(
+  dir_priv,
+  "iri",
+  "tif"
+)
+dir(dir_iri_1degree)
+fp_iri_orig <-file.path(
+  dir_iri_1degree,
+  "glb_iri_forecast_seasonal_precipitation_lower_tercile_prob_Np90Sm90Ep180Wm180_2023-09-16.tif"
+)
+r_iri_orig<- rast(fp_iri_orig) 
+r_iri_orig %>% 
+  set.names(
+    c("lt1","lt2","lt3","lt4")
+  )
+
+
+r_iri_orig_cropped <- crop(r_iri_orig, gdf_aoi)
+r_iri_orig_cropped_clipped <- mask(r_iri_orig_cropped, gdf_aoi)
+
+p_orig <- ggplot()+
+  geom_spatraster(
+   data= r_iri_orig_cropped_clipped
+  )+
+  scale_fill_steps2(
+    breaks = seq(30,55,by=5),
+  low = "yellow",
+  mid = "orange",
+  high = "red",
+  midpoint = 35,
+  space = "Lab",
+  na.value = NA,
+  guide = "coloursteps",
+  aesthetics = "fill",
+  name= "probabilty below\naverage forecast"
+)+
+    facet_wrap(~lyr)+
+    geom_sf(
+    data= gdf_aoi,
+    fill=NA,
+    color="black"
+  )+
+  labs(
+    title = glue("IRI 1 degree: seasonal below average rainfall forecast probability"),
+    subtitle = glue("Date forecast: 2023 September\nPrediction: 2023 October - 2024 January"),
+    caption = "Seasonal forecast: IRI"
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    axis.line = element_blank(),
+    plot.caption = element_text(hjust = 0, size = 8)
+  )
+
+p_map_iri_faceted+ p_orig
+
+```
+
+
+```{r}
+```
+
+
 
