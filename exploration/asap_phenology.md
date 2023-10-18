@@ -40,15 +40,19 @@ DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
 ## Process data
 
 ```python
-# utils.process_asap_phenology_dekads()
+utils.process_asap_phenology_dekads(end="sen")
 ```
 
 ```python
-# utils.process_asap_phenology_months()
+utils.process_asap_phenology_months(end="sen")
 ```
 
 ```python
-# utils.process_asap_phenology_trimesters("any")
+utils.process_asap_phenology_trimesters(agg="any", end="sen")
+```
+
+```python
+utils.process_asap_phenology_trimesters(agg="sum", end="sen")
 ```
 
 ```python
