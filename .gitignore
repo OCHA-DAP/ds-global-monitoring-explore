@@ -1,4 +1,21 @@
+# R
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
+
+# PyEnv
+.python-version
+
+# PyCharm
+.idea/
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints
+
+*.egg-info/
+__pycache__/
+
+# Mac
+.DS_Store
