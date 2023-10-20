@@ -23,9 +23,8 @@ DATA_DIR = Path(os.getenv("AA_DATA_DIR"))
 
 
 def process_asap_phenology_dekads(end: Literal["e", "sen"]):
-    """
-    Takes ASAP phenology TIFs (start and end of seasons 1 and 2), and outputs
-    boolean for whether in season or not, by 1km pixel.
+    """Takes ASAP phenology TIFs (start and end of seasons 1 and 2), and
+    outputs boolean for whether in season or not, by 1km pixel.
     Returns
     -------
 
@@ -124,9 +123,8 @@ def load_inseason(
     agg: Literal["any", "sum"] = None,
     end: Literal["e", "sen"] = "sen",
 ) -> xr.DataArray:
-    """
-    Loads 1km resolution global raster with boolean for whether each pixel is
-    in season.
+    """Loads 1km resolution global raster with boolean for whether each pixel
+    is in season.
     Parameters
     ----------
     interval: Literal["dekad", "month", "trimester_any", "trimester_sum"]
@@ -166,6 +164,7 @@ def load_inseason(
 
 
 def process_asap_phenology_months(end: Literal["e", "sen"]):
+    """Determines which ASAP months have a dekad in season"""
     months = range(1, 13)
     month_dir = DATA_DIR / f"public/processed/glb/asap/season/month_{end}"
     for month in tqdm(months):
@@ -183,6 +182,21 @@ def process_asap_phenology_months(end: Literal["e", "sen"]):
 def process_asap_phenology_trimesters(
     agg: Literal["any", "sum"], end: Literal["e", "sen"]
 ):
+    """Determines inseason of trimester based on inseason of dekads from ASAP.
+
+    Parameters
+    ----------
+    agg: Literal["any", "sum"]
+        How to aggregate. If "any", trimester is in season if any of its dekads
+        are in season. If "sum", returns count of dekads within the trimester
+        that are in season (i.e. between 0 and 9).
+    end: end: Literal["e", "sen"]
+        How the end of season is defined (ASAP "end" or ASAP "senescence")
+
+    Returns
+    -------
+
+    """
     if agg not in ["any", "sum"]:
         raise ValueError("Agg must be 'any' or 'sum'")
     months = range(1, 13)
@@ -253,8 +267,7 @@ def load_asap_seasonal() -> pd.DataFrame:
 
 
 def process_asap_seasonal():
-    """
-    Process ASAP seasonal calendar.
+    """Process ASAP seasonal calendar.
     Matches up adm1 codes to align with those in ASAP adm.
     In some cases, this means that an admin2 gets assigned to be an admin1 -
     in this case, the original name (admin2) will appear in brackets next to
@@ -310,8 +323,7 @@ def process_asap_seasonal():
 
 
 def process_fewsnet_lz_asap_adm_intersection():
-    """
-    Processes the intersection for all FEWSNET livelihood zones
+    """Processes the intersection for all FEWSNET livelihood zones
     with ASAP admin1s.
     Returns
     -------
@@ -413,8 +425,7 @@ def load_fewsnet_livelihoodzones() -> gpd.GeoDataFrame:
 
 
 def load_asap_adm(level: int = 0) -> gpd.GeoDataFrame:
-    """
-    Load ASAP admin boundaries.
+    """Load ASAP admin boundaries.
     Note: not as up-to-date as those on HDX, but at least complete for the
     whole world.
 
@@ -436,8 +447,7 @@ def load_asap_adm(level: int = 0) -> gpd.GeoDataFrame:
 
 
 def load_acaps_seasonal_processed() -> pd.DataFrame:
-    """
-    Load processed ACAPS seasonal calendar
+    """Load processed ACAPS seasonal calendar
 
     Returns
     -------
@@ -451,8 +461,7 @@ def load_acaps_seasonal_processed() -> pd.DataFrame:
 
 
 def process_acaps_seasonal():
-    """
-    Processes ACAPS seasonal calendar,
+    """Processes ACAPS seasonal calendar,
     more or less to go from wide to long format.
 
     Explodes label (typically crop type) and adm1 columns.
@@ -534,8 +543,7 @@ def load_drought_codabs() -> gpd.GeoDataFrame:
 
 
 def process_drought_codabs():
-    """
-    Merges all CODABs into one shp.
+    """Merges all CODABs into one shp.
     Selects only those that are in ACAPS, and have an existing AnticiPy config.
     Returns
     -------
@@ -589,8 +597,7 @@ def approx_mask_raster(
     y_dim: str,
     resolution: float = 0.05,
 ) -> xr.Dataset:
-    """
-    Resample raster data to given resolution.
+    """Resample raster data to given resolution.
 
     Uses as resample method nearest neighbour, i.e. aims to keep the values
     the same as the original data. Mainly used to create an approximate mask
