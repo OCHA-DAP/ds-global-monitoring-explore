@@ -27,7 +27,7 @@
 phenology_data_definition <- c(
   "EOS",
   "SEN"
-)[1]
+)[2]
 
 
 # let user define what outputs to write, or rather just store in memory for testing
@@ -119,7 +119,7 @@ gdf_adm0 <- st_read(
 
 # ASAP Phenology data - rasters containing binary values indicating whether or not
 r_phen_m3 <- rast(
-  list.files(dir_months3,full.names = T),
+  list.files(dir_phen,full.names = T),
 )
 
 # a nice name lookup table for renaming raster bands
