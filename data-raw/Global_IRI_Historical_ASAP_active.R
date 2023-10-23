@@ -27,7 +27,7 @@
 phenology_data_definition <- c(
   "EOS",
   "SEN"
-)[2]
+)[1]
 
 
 # let user define what outputs to write, or rather just store in memory for testing
@@ -279,7 +279,7 @@ band_meta_lookup <- expand_grid(
     pub_date = str_extract(tif_name, "\\d{4}-\\d{2}-\\d{2}") ,
     band_id = paste0(pub_date, "_",leadtime)
   )
-
+length(band_meta_lookup$tif_name) == nlyr(r_iri_historical) # check
 
 # reset band names w/ lookup table vector
 r_iri_historical %>% 
@@ -299,14 +299,13 @@ df_iri_historical_values <- r_iri_historical_cropped %>%
   data.frame() %>%
   tibble() 
 
-
 df_iri_historical_long <- df_iri_historical_values %>% 
   # only keep grid cells that are not all NA for phenology
   filter(grid_id %in% df_phen_grid_active_polys$grid_id) %>% 
   pivot_longer(-grid_id, values_to = "iri_prob_bavg") %>% 
   mutate(
     pub_date_tmp= str_extract(name, "\\d{4}.\\d{2}.\\d{2}") ,
-    leadtime = as.numeric(str_extract(name,"\\d{1}")),
+    leadtime = as.numeric(str_extract(name,"\\d{1}$")),
     pub_date = floor_date(as_date(pub_date_tmp,format = "%Y.%m.%d"),"month"),
     start_mo = pub_date+ months(leadtime),
     start_mo_lab = month(start_mo,label=T)
