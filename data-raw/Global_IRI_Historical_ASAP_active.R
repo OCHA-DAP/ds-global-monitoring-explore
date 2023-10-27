@@ -126,7 +126,7 @@ r_phen_m3 <- rast(
 # it's more complicated than necessary, but gives us a couple options for flexibility
 df_phen_lookup <- tibble(
   file_name = names(r_phen_m3),
-  mo_combo = str_extract_all(file_name, "\\d.*") %>% 
+  mo_combo = str_extract_all(file_name, pattern = "\\d+-\\d+-\\d+") %>% 
     unlist()
 ) %>% 
   separate(
