@@ -184,7 +184,7 @@ r_iri_template_cropped <- crop(r_iri_template,
 
 
 # create grid_id band for raster
-r_iri_template_cropped[["grid_id"]] <- 1:ncell(r_iri_template_cropped)
+r_iri_template_cropped$grid_id <- 1:ncell(r_iri_template_cropped)
 
 # isolate grid_id band as new raster
 r_iri_grid <-  r_iri_template_cropped[["grid_id"]]
