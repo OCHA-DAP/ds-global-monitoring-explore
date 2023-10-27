@@ -1,0 +1,306 @@
+---
+title: "IRI ASAP Viz Prototypes"
+output: html_document
+date: "2023-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Intro
+
+In this document we explore visualization options for combining ASAP and IRI data in map format. The idea is basically to show forecasts data for upcoming months masked to active season phenology data.
+
+There are currently lots of ongoing discussions on how we would alert and what breaks/thresholds make sense to visualize. Therefore it probably does not make sense to focus on tweaking aesthetics until we have a better idea of what we want to show.
+
+Nonetheless, these maps are useful to think about when discussing how we want the product(s) to develop.
+
+**Note:** Some of the processes take a few minutes to run so this document is not meant to be knitted.
+
+```{r cars}
+library(tidyverse)
+library(terra)
+library(sf)
+library(countrycode)
+library(gghdx)
+library(tidyterra)
+library(glue)
+gghdx()
+```
+
+```{r}
+dir_pub <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "public",
+  "processed",
+  "glb"
+)
+
+gdb_adm0 <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "public",
+  "raw",
+  "glb",
+  "asap",
+  "reference_data",
+  "gaul0_asap_v04"
+)
+
+gdf_adm0 <- st_read(gdb_adm0, layer = "gaul0_asap")
+
+dir_priv <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "private",
+  "processed",
+  "glb"
+)
+
+dir_phen <-  file.path(
+  dir_pub, 
+  "asap",
+  "season"
+  )
+dir(dir_phen)
+dir_iri <-  file.path(
+  dir_priv,
+  "iri",
+  "tif",
+  "iri_tif_10km"
+)
+dir(dir_iri)
+
+
+months3_files <- c("inseason_months-10-11-12.tif",
+  "inseason_months-11-12-1.tif",
+  "inseason_months-12-1-2.tif", 
+  "inseason_months-1-2-3.tif"
+)
+
+dir_months3 <- file.path(
+  dir_phen,
+  "trimester_any"
+  )
+r_phen_m3 <- rast(
+  str_subset(
+  list.files(dir_months3,full.names = T),
+  glue_collapse(paste0(months3_files,"$"),sep = "|"))
+  )
+# load individual month active
+
+new_phen_name <- tibble(
+  mo_combo = str_extract_all(names(r_phen_m3), "\\d.*") %>% 
+         unlist()
+  ) %>% 
+  separate(
+    mo_combo,into = c("mo1","mo2","mo3"),sep = "-"
+  ) %>%
+  mutate(
+  across(
+    everything(),~month(as.numeric(.x),label=T)
+  )  
+  ) %>% 
+  unite("new_name",everything(),sep = "-") %>% 
+  pull(new_name)
+
+r_phen_m3 %>% 
+  set.names(
+    new_phen_name
+  )
+  
+fp_iri <- file.path(
+  dir_iri,
+  "glb_iri_bavg_2023-09-16.tif"
+ # "glb_iri_forecast_seasonal_precipitation_lower_tercile_prob_Np90Sm90Ep180Wm180_2023-09-16.tif" 
+)
+
+# load IRI
+r_iri <- rast(fp_iri)
+
+# good to crop here before creating mask as extent will change w/ NA imputed
+r_phen_m3_crop <-  crop(r_phen_m3,r_iri)
+mask_phen_m3 <- ifel(r_phen_m3_crop ==1, 1,NA)
+
+```
+
+
+
+```{r}
+# make composite from 4 leadtimes of IRI
+r_iri_lts <- r_iri[[c("lt1","lt2","lt3","lt4")]]
+r_iri_composite <- max(r_iri_lts)
+
+
+# make names for lts to months predicted so that we can match them w/ individual phenology months
+iri_pub_date <- as_date(
+  str_extract_all(basename(sources(r_iri_lts)),
+                  "\\d{4}-\\d{2}-\\d{2}") %>% 
+                          unlist()
+  )
+
+new_names <- seq(
+  # sequence of months from 1 month after to 4 month after publication (trimester)
+  iri_pub_date+months(1),
+  # 4 month after publication
+  iri_pub_date+ months(4),
+  by ="month"
+) %>% 
+  map_chr(
+    \(mo_start)
+    format(seq(mo_start, mo_start+months(2), by="month"),"%b") %>% 
+      glue_collapse(sep = "-")
+  ) 
+
+r_iri_lts %>% 
+  set.names(new_names)
+
+```
+
+```{r}
+# resample sample IRI to 1 km
+# resample individual IRI lts to crop phenology resolution (1km)
+# takes a minute
+r_iri_lts_1km <- resample(r_iri_lts, r_phen_m3_crop)
+
+# check
+res(r_iri_lts_1km)==res(r_phen_m3_crop)
+
+
+
+# mask IRI individual leadtimes w/ trimester  active mask - returns list
+# this takes a minute or 2
+
+# quick check - good, names are same
+setdiff(names(r_iri_lts_1km),names(mask_phen_m3))
+
+lr_iri_lts_masked <- names(r_iri_lts_1km) %>% 
+  map(
+    \(mo_temp){
+      mask(r_iri_lts_1km[[mo_temp]], mask_phen_m3[[mo_temp]])
+    }
+  )
+```
+
+
+  
+```{r}
+
+# add some ISO's doesn't matter that names are not perfect for this example
+# just want to pull Africa out for some proto-typing
+gdf_adm0 <- gdf_adm0 %>% 
+  mutate(
+    iso3 = countrycode(name0, "country.name.en", "iso3c"),
+    continent = countrycode(iso3, origin = "iso3c",destination = "continent"),
+  )
+
+gdf_aoi <- gdf_adm0 %>% 
+  filter(continent=="Africa")
+```
+
+## Plot
+
+```{r}
+r_iri_lts_masked<- rast(lr_iri_lts_masked)
+r_iri_lts_masked_cropped <- crop(r_iri_lts_masked, gdf_aoi)
+r_iri_lts_masked_clipped <- mask(r_iri_lts_masked_cropped, gdf_aoi)
+```
+
+```{r}
+p_map_iri_faceted <- ggplot()+
+  geom_spatraster(
+   data= r_iri_lts_masked_clipped
+  )+
+  scale_fill_steps2(
+    breaks = seq(30,55,by=5),
+  low = "yellow",
+  mid = "orange",
+  high = "red",
+  midpoint = 35,
+  space = "Lab",
+  na.value = NA,
+  guide = "coloursteps",
+  aesthetics = "fill",
+  name= "probabilty below\naverage forecast"
+)+
+    facet_wrap(~lyr)+
+    geom_sf(
+    data= gdf_aoi,
+    fill=NA,
+    color="black"
+  )+
+  labs(
+    title = glue("Seasonal below average rainfall forecast probability in\nareas with an active season"),
+    subtitle = glue("Date forecast: 2023 September\nPrediction: 2023 October - 2024 March"),
+    caption = "Seasonal forecast: IRI\nSeasonal Calendar: ASAP\nActive season layer created by compositing all areas classified as 'active' over the 3 month period"
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    axis.line = element_blank(),
+    plot.caption = element_text(hjust = 0, size = 8)
+  )
+
+p_map_iri_faceted
+```
+
+
+```{r}
+dir_iri_1degree <-  file.path(
+  dir_priv,
+  "iri",
+  "tif"
+)
+
+fp_iri_orig <-file.path(
+  dir_iri_1degree,
+  "glb_iri_forecast_seasonal_precipitation_lower_tercile_prob_Np90Sm90Ep180Wm180_2023-09-16.tif"
+)
+r_iri_orig<- rast(fp_iri_orig) 
+r_iri_orig %>% 
+  set.names(
+    c("lt1","lt2","lt3","lt4")
+  )
+
+
+r_iri_orig_cropped <- crop(r_iri_orig, gdf_aoi)
+r_iri_orig_cropped_clipped <- mask(r_iri_orig_cropped, gdf_aoi)
+
+p_orig <- ggplot()+
+  geom_spatraster(
+   data= r_iri_orig_cropped_clipped
+  )+
+  scale_fill_steps2(
+    breaks = seq(30,55,by=5),
+  low = "yellow",
+  mid = "orange",
+  high = "red",
+  midpoint = 35,
+  space = "Lab",
+  na.value = NA,
+  guide = "coloursteps",
+  aesthetics = "fill",
+  name= "probabilty below\naverage forecast"
+)+
+    facet_wrap(~lyr)+
+    geom_sf(
+    data= gdf_aoi,
+    fill=NA,
+    color="black"
+  )+
+  labs(
+    title = glue("IRI 1 degree: seasonal below average rainfall forecast probability"),
+    subtitle = glue("Date forecast: 2023 September\nPrediction: 2023 October - 2024 January"),
+    caption = "Seasonal forecast: IRI"
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    axis.line = element_blank(),
+    plot.caption = element_text(hjust = 0, size = 8)
+  )
+
+p_orig
+
+```

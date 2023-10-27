@@ -2,3 +2,12 @@
 .Rhistory
 .RData
 .Ruserdata
+# testing tifs
+*.tif
+*.tfw
+*.png
+*.parquet
+*.rds
+*.csv
+.scrapy
+load_gc_creds.R
