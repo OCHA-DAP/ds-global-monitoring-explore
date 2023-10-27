@@ -15,7 +15,7 @@
 #' 
 #' 
 #' Note - to run in background:navigate to project root directory and run:
-#'   caffeinate -i -s Rscript data-raw/df_global_iri_active_thresholds.R
+#'   caffeinate -i -s Rscript data-raw/Global_IRI_Historical_ASAP_active.R
 
 
 
