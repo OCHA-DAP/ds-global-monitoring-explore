@@ -187,15 +187,14 @@ r_iri_template_cropped <- crop(r_iri_template,
 r_iri_template_cropped$grid_id <- 1:ncell(r_iri_template_cropped)
 
 # isolate grid_id band as new raster
-r_iri_grid <-  r_iri_template_cropped[["grid_id"]]
+r_iri_grid <-  r_iri_template_cropped$grid_id
 
 # for Global analysis I could simply aggregate ASAP phenology binary rasters
 # to the IRI resolution by count, but let's create a polygon grid as it will be 
 # easier to use later when we want more strata (i.e splitting strata)
 
 # convert to polygon
-poly_iri_grid<- as.polygons(r_iri_grid) 
-poly_iri_grid <- poly_iri_grid %>% 
+poly_iri_grid<- as.polygons(r_iri_grid) %>% 
   st_as_sf()  
 
 # write grid to shared folder v- in case it's useful for later
@@ -215,19 +214,25 @@ system.time(
                                 #In all of the summary operations, NA values in the the primary raster (x) 
                                 # raster are ignored (i.e., na.rm = TRUE.) ,
                                 
-                                fun = c("mean"), # mean will calculate % active 
+                                fun = c("mean","count","sum"), # mean will calculate % active 
                                 append_cols = "grid_id"
   )
   
 )
 
+
 # just quickly look at results
+df_phen_grid %>% nrow()
+
 df_phen_grid_active_polys <- df_phen_grid %>% 
   filter(
     if_any(
       starts_with("mean"),
            ~!is.nan(.x))
     ) 
+
+df_phen_grid_active_polys %>% 
+  nrow()
 
 # lets make sure all these NA values make sense - Looks good 
 poly_iri_grid %>% 
@@ -249,19 +254,19 @@ poly_iri_grid %>%
 #   
 # )
 
-# have a look
-df_phen_grid %>% 
-  pivot_longer(-grid_id)
-
 
 df_phen_grid_long <- df_phen_grid_active_polys %>% 
-  tibble() %>% 
-  pivot_longer(-grid_id,
-               values_to  = "pct_active_season") %>%
-  mutate(
-    start_mo_lab  = str_remove(name,"mean.")
+  pivot_longer(-grid_id) %>% 
+  # pivot_longer(-matches("adm")) %>%
+  separate(name,
+           into = c("stat", "date"),
+           sep = "\\."
   ) %>% 
-  select(-name)
+  rename(
+    start_mo_lab  = "date"
+  )
+
+
 
 # Extract IRI values ------------------------------------------------------
 
@@ -288,7 +293,7 @@ r_iri_historical %>%
 r_iri_historical_cropped <- crop(r_iri_historical,world_bbox)
 
 # add grid id band
-r_iri_historical_cropped[["grid_id"]] <- 1:ncell(r_iri_historical_cropped)
+r_iri_historical_cropped$grid_id <- 1:ncell(r_iri_historical_cropped)
 
 # extract all band values
 df_iri_historical_values <- r_iri_historical_cropped %>% 
@@ -311,7 +316,11 @@ df_iri_historical_long <- df_iri_historical_values %>%
 
 df_iri_historical_asap_long <- df_iri_historical_long %>% 
   left_join(
-    df_phen_grid_long
+    df_phen_grid_long %>% 
+      pivot_wider(
+        names_from = "stat",
+        values_from = "value"
+      ), by = c("grid_id","start_mo_lab")
   )
 
 if(write_merged_tabular_data){
