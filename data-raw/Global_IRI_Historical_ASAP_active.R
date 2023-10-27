@@ -162,14 +162,14 @@ plot(r_phen_qf_rm[[1]]) # good
 # Grid --------------------------------------------------------------------
 
 # grab all the original IRI tif filenames (fn)
-fn_iri <- list.files(dir_iri,
+fp_iri <- list.files(dir_iri,
                      pattern = "^glb.*.tif$",
-                     recursive = F)
+                     recursive = F,
+                     full.names = T)
 
 # take the latest one to use as a template
 r_iri_template <- rast(file.path(
-  dir_iri,
-  fn_iri[length(fn_iri)]
+  fp_iri[length(fp_iri)]
 ))
 
 # IRI has overlapping pixels as edges are aligned to 0.5 degs - therefore can't easily make grid - so let's crop
@@ -265,10 +265,7 @@ df_phen_grid_long <- df_phen_grid_active_polys %>%
 
 # Extract IRI values ------------------------------------------------------
 
-r_iri_historical <- rast(file.path(
-  dir_iri,
-  fn_iri
-))
+r_iri_historical <- rast(fp_iri)
 
 # useful lookup for renaming bands which are not default read-in values are not useful
 band_meta_lookup <- expand_grid(
