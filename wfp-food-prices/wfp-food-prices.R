@@ -17,7 +17,7 @@ get_rhdx_config()
 wfp_glb <- read_csv("https://data.humdata.org/dataset/31579af5-3895-4002-9ee3-c50857480785/resource/0f2ef8c4-353f-4af1-af97-9e48562ad5b1/download/wfp_countries_global.csv")
 
 # searching for wfp food price datasets on HDX and reading in resources
-wfp_fp_datasets <- search_datasets(" - Food Prices", rows = 50) %>%
+wfp_fp_datasets <- search_datasets(" - Food Prices", rows = 300) %>%
   purrr::set_names(map(., ~.x$data$title)) %>%
   subset(names(.) != "Global - Food Prices") %>%
   map(~.x %>% 
