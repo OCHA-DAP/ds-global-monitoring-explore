@@ -31,9 +31,11 @@ wfp_fp_resources <- wfp_fp_datasets %>%
   `!`() %>%
   wfp_fp_datasets[.]
 
-# exploring possible thresholds
+# exploring possible thresholds overall and for each country
 # Q1: Do different countries tend to have lower prices than others?
-# Q2: Pricetype: Wholesale vs retail
-# Q3: Which category/commodity is the most expensive?
-# Q4: 
-# Q5: 
+# Q2: Pricetype: Wholesale vs retail, how large is the difference?
+# Q3: Which category/commodity tends to be the most expensive?
+# Q4: Which category/commodity would be a good indicator of average prices?
+# Q5: Do different admin 1s and 2s have drastic changes in price?
+# Q6: Should we use local currency or USD? If we aim to compare across countries/regions then use USD.
+# Q7: 
