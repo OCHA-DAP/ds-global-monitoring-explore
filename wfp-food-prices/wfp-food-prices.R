@@ -26,7 +26,8 @@ wfp_fp_resources <- wfp_glb %>%
   map(~ pull_dataset(.) %>%
         get_resource(1) %>%
         read_resource()) %>%
-  set_names(wfp_glb$countryiso3)
+  set_names(wfp_glb$countryiso3) %>%
+  bind_rows(.id = "countryiso3")
 
 #wfp_fp_datasets <- search_datasets(" - Food Prices", rows = 300) %>%
 #  purrr::set_names(map(., ~.x$data$title)) %>%
@@ -53,7 +54,8 @@ wfp_fp_resources <- wfp_glb %>%
 
 # starting with which category would be a good indicator of average prices
 # Ethiopia: 
-eth_wfp <- wfp_fp_resources$ETH
+eth_wfp <- wfp_fp_resources %>%
+  filter(countryiso3 == "ETH")
 
 # using Local
 eth_wfp %>%
