@@ -1,0 +1,121 @@
+---
+title: "Global Flood Monitoring System"
+format: html
+editor: visual
+---
+
+Some code to explore feasibility of using GFMS
+
+Global Flood Monitoring System (GFMS), University of Maryland
+Contact: Dr. Huan Wu huanwu@umd.edu
+
+[Web Portal](http://flood.umd.edu/)
+[Data Description](http://eagle2.umd.edu/flood/GFMS_readme.pdf)
+[Data Access](http://eagle2.umd.edu/flood/download/2023/202312/)
+
+```{r}
+library(terra)
+library(sf)
+library(tidyverse)
+library(countrycode)
+
+# converted authors C code (in readme) to R - thanks BARD
+readBinLayer <- function(filename, row, col) {
+  # Open the binary file in read-only mode
+  con <- file(filename, "rb")
+  on.exit(close(con))  # Ensure file closure even if errors occur
+
+  # Check if file was opened successfully
+  if (!isOpen(con)) {
+    stop(paste("Error: The threshold file is not available yet! ", filename, sep = ""))
+  }
+
+  # Read the data as raw bytes
+  raw_data <- readBin(con, "raw", n = row * col * 4)  # 4 bytes per float
+
+  # Reshape the raw data into a matrix of floats
+  buffer <- matrix(readBin(raw_data, "double", n = length(raw_data) / 4), nrow = row, ncol = col)
+
+  return(buffer)
+}
+```
+
+
+```{r}
+# just downloaded a random public file
+fp <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "public",
+  "raw",
+  "glb",
+  "gfms",
+  "Flood_byStor_2022120100.bin"
+)
+
+gdb_adm0 <- file.path(
+  Sys.getenv("AA_DATA_DIR"),
+  "public",
+  "raw",
+  "glb",
+  "asap",
+  "reference_data",
+  "gaul0_asap_v04"
+)
+```
+
+```{r}
+# quick code to set african continent as AOI
+gdf_adm0 <- st_read(gdb_adm0, layer = "gaul0_asap")
+# just want to pull Africa out for some proto-typing
+gdf_adm0 <- gdf_adm0 %>% 
+  mutate(
+    iso3 = countrycode(name0, "country.name.en", "iso3c"),
+    continent = countrycode(iso3, origin = "iso3c",destination = "continent"),
+  )
+
+gdf_aoi <- gdf_adm0 %>% 
+  filter(continent=="Africa")
+```
+
+
+```{r}
+
+# parameters decribed in authors readme/data description
+row <- 800
+col <- 2458
+xllcorner <- -127.25
+yllcorner <- -50
+cellsize <- 0.125
+no_data_val <- -9999
+
+# use function to read in Matrix
+mtrx <- readBinLayer(fp,row =row,col = col) 
+
+# Create a SpatRaster
+spat_raster <- rast(
+  matrix(mtrx, nrow = row, ncol = col),
+  ext = c(xllcorner, xllcorner + (col * cellsize), 
+          yllcorner, yllcorner + (row * cellsize)))
+spat_raster[spat_raster==no_data_val]<-NA
+
+crs_value <- "+proj=latlong +datum=WGS84"
+crs(spat_raster) <- crs_value
+```
+
+
+```{r}
+# attempt viz
+
+# not sure about warning message, but looks like color breaks issue
+plot(spat_raster)
+
+# this gets rid of warning, but also looks bad
+plot(spat_raster, breaks = c(seq(min(values(spat_raster)),max(values(spat_raster)), length.out = 10)), col = terrain.colors(10))
+
+
+# go back to orig just for firt viz
+plot(spat_raster)
+plot(gdf_aoi$geometry,add=T)
+```
+
+
