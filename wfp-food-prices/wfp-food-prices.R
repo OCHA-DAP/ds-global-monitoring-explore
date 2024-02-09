@@ -10,6 +10,7 @@ library(gghdx)
 library(rhdx)
 library(zoo)
 gghdx()
+options(scipen = 9999)
 
 # rhdx config
 set_rhdx_config(hdx_site = "prod")
@@ -58,38 +59,37 @@ eth_wfp <- wfp_fp_resources %>%
   filter(countryiso3 == "ETH")
 
 # using Local
-eth_wfp %>%
+wfp_fp_resources %>%
   filter(category == "cereals and tubers") %>%
   ggplot(aes(x=date, y=price)) +
   geom_line() + 
   geom_smooth(method=lm) +
-  facet_wrap(vars(admin1))
+  facet_wrap(vars(countryiso3))
 
 # using USD
-eth_wfp %>%
+wfp_fp_resources %>%
   filter(category == "cereals and tubers") %>%
   ggplot(aes(x=date, y=usdprice)) +
   geom_line() + 
   geom_smooth(method=lm) +
-  facet_wrap(vars(admin1))
+  facet_wrap(vars(countryiso3))
 
 # prices tend to increase over time but the trend tends to be increasing
-# almost at the same rate for most admin 1s
 # looking at using % increase over time
 
-uniq_cats <- eth_wfp %>%
+uniq_cats <- wfp_fp_resources %>%
   select(category, commodity, unit, pricetype) %>%
   distinct()
 
-price_type <- eth_wfp %>%
+price_type <- wfp_fp_resources %>%
   group_by(category, pricetype, unit) %>%
   summarise(avg_price = mean(usdprice, na.rm = T)) %>%
-  mutate(avg_price_c = case_when(unit == "100 KG" ~ avg_price/100, .default = avg_price),
+  mutate(avg_price_norm = case_when(unit == "100 KG" ~ avg_price/100, .default = avg_price),
          pricetype_unit = paste(pricetype, "-", unit))
 
-ggplot(price_type, aes(x = category, y = avg_price_c, fill = pricetype_unit)) +
+ggplot(price_type, aes(x = category, y = avg_price_norm, fill = pricetype_unit)) +
   geom_bar(stat = "identity", position = position_dodge2(width = 0.7, preserve = "single")) +
-  labs(title = "Average Prices for Food Categories - Ethiopia",
+  labs(title = "Average Prices for Food Categories - Global",
        x = "Category",
        y = "Price (USD)") 
 
@@ -97,14 +97,14 @@ ggplot(price_type, aes(x = category, y = avg_price_c, fill = pricetype_unit)) +
 # Possible: % of commodities with above a certain % increase in prices.
 # What level of % increase would be seen as abnormal and warrant an alert?
 
-annual_inc_df <- eth_wfp %>%
+annual_inc_df <- wfp_fp_resources %>%
   mutate(year = format(as.Date(date), "%Y"),
          pricetype_unit = paste(pricetype, "-", unit)) %>%
   arrange(commodity, date) %>%
   group_by(year, commodity, pricetype_unit) %>%
   summarize(annual_inc = (last(usdprice) - first(usdprice)) / first(usdprice) * 100) %>%
   group_by(year) %>%
-  summarise(perc = mean(annual_inc > 1) * 100)
+  summarise(perc = mean(annual_inc > 5, na.rm = TRUE) * 100)
 
 # looking at a 1-in-5 year RP
 ggplot(annual_inc_df, aes(x = year, y = perc, group = 1)) +
@@ -118,4 +118,58 @@ ggplot(annual_inc_df, aes(x = year, y = perc, group = 1)) +
 # 5. What IPC/FEWSNET takes into account for analysis? 
 # 6. Look at only retail prices maybe?
 # 7. Price increases differing from price increase across other countries.
-# 8. Compare 3-month vs 1-month changes
+# 8. Compare 3-month vs 1-month changes vs 6-month
+# 9. Should we focus on varieties of commodities or only on a base one?
+
+# looking at which commodity would be a good indicator of prices
+unique(wfp_fp_resources$pricetype)
+# are all price types available in all markets?
+# how many markets are there?
+wfp_fp_resources %>%
+  summarise(across(c(countryiso3, admin1, admin2, market), ~n_distinct(.)))
+
+### NEW STRATEGY
+# looking at 3-month periods
+# Medium Concern: Highest price in the past 1 year
+# High Concern: Highest price in the last 3 years
+# Minimum threshold
+
+## We start by normalising the prices to one measure of mass.
+## From the data, it does not look like all commodities have a common unit. 
+
+## Check by category if each commodity has values in KG.
+## first check the proportion of each unit by category
+## this is to try and get the most common unit for each category
+cat_prop <- wfp_fp_resources %>%
+  filter(pricetype == "Retail" & category != "non-food") %>%
+  group_by(category, unit) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  mutate(proportion = count / sum(count)) %>%
+  arrange(category, desc(proportion)) %>%
+  group_by(category) %>%
+  top_n(3)
+
+## For "cereals and tubers", "meat, fish and eggs", "miscellaneous food",
+## "pulses and nuts" and "vegetables and fruits" seem to be mostly available at KG 
+## as this is the most common unit
+
+## "milk and dairy" and "oil and fats" seem to be available as either in L or KG.
+
+## Next step is to confirm that all commodities are available at either L or KG 
+## in all markets.
+
+## First, check if retail prices are available everywhere for all commodities.
+
+View(uniq_cats %>%
+       arrange(category, commodity, unit, pricetype))
+
+wfp_fp_resources %>%
+  # filter to remove non-food category
+  filter(category != "non-food") %>%
+  # standardise by commodity
+  group_by(countryiso3, commodity) %>%
+  arrange(date) %>%
+  mutate(
+    rolling_avg = zoo::rollapply(usdprice, width = 3, FUN = mean, align = "right", fill = NA)
+  )
