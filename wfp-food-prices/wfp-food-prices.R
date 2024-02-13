@@ -126,7 +126,10 @@ unique(wfp_fp_resources$pricetype)
 # are all price types available in all markets?
 # how many markets are there?
 wfp_fp_resources %>%
-  summarise(across(c(countryiso3, admin1, admin2, market), ~n_distinct(.)))
+  unite("unique_market", countryiso3, admin1, admin2, market, sep = "_") %>%
+  summarise(n_distinct(unique_market))
+
+# there look to be 3689 markets
 
 ### NEW STRATEGY
 # looking at 3-month periods
@@ -152,14 +155,61 @@ cat_prop <- wfp_fp_resources %>%
 
 ## For "cereals and tubers", "meat, fish and eggs", "miscellaneous food",
 ## "pulses and nuts" and "vegetables and fruits" seem to be mostly available at KG 
-## as this is the most common unit
+## as this is the most common unit.
 
 ## "milk and dairy" and "oil and fats" seem to be available as either in L or KG.
 
 ## Next step is to confirm that all commodities are available at either L or KG 
 ## in all markets.
 
-## First, check if retail prices are available everywhere for all commodities.
+## First, check if retail prices are available in all markets for all commodities.
+### using the number of unique markets as the baseline, let's see how many markets 
+### have retail prices for all commodities and in which units.
+
+## checking if there are markets with the same name in admin 2: 
+## No. All markets in an admin 2 have unique names
+wfp_fp_resources %>%
+  select(countryiso3, admin1, admin2, market, latitude, longitude) %>%
+  distinct() %>%
+  group_by(countryiso3, admin1, admin2, market) %>%
+  summarise(n_distinct(market))
+
+## are there retail prices for commodities in all markets?
+wfp_fp_resources %>%
+  group_by(countryiso3, admin1, admin2, market, category, commodity) %>%
+  summarise(unique_comm = n_distinct(pricetype)) %>%
+  filter(unique_comm > 1)
+# in each market, you have at most 2 price types for all commodities. 
+
+wfp_retail <- wfp_fp_resources %>%
+  filter(pricetype == "Retail" & category != "non-food")
+## are there retail prices in KG or L for all commodities in all markets?
+retail_food <- wfp_retail %>%
+  # group_by(countryiso3, admin1, admin2, market, category, commodity) %>%
+  #summarise(unique_comm = n_distinct(unit, pricetype)) %>%
+  filter((unit == "KG" | unit == "L") & category != "non-food")
+
+wfp_retail %>%
+  unite("unique_market", countryiso3, admin1, admin2, market, sep = "_") %>%
+  summarise(n_distinct(unique_market))
+
+# not all markets have retail prices
+wfp_fp_resources %>%
+  filter(pricetype != "Retail") %>%
+  distinct(countryiso3, market)
+# not all markets have retail prices 
+# not all markets have retail prices with units in KG or L.
+
+# normalising the prices
+unique(wfp_retail$unit)
+
+
+
+## I could only find 13 countries from FEWS NET staple food dataset
+# Angola, Chad, Congo, The Democratic Republic of the
+# Djibouti, Ethiopia, Haiti, Kenya, Malawi, Mauritania, Nigeria
+# Somalia, South Sudan, Zimbabwe
+
 
 View(uniq_cats %>%
        arrange(category, commodity, unit, pricetype))
