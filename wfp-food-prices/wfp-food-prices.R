@@ -80,6 +80,8 @@ wfp_fp_resources %>%
 uniq_cats <- wfp_fp_resources %>%
   select(category, commodity, unit, pricetype) %>%
   distinct()
+View(uniq_cats %>%
+       arrange(category, commodity, unit, pricetype))
 
 price_type <- wfp_fp_resources %>%
   group_by(category, pricetype, unit) %>%
@@ -203,23 +205,85 @@ wfp_fp_resources %>%
 # normalising the prices
 unique(wfp_retail$unit)
 
+wfp_norm <- wfp_retail %>%
+  filter(date >= (today() - years(5))) %>%
+  mutate(unit_std = case_when(
+    grepl("\\sG", unit) ~ paste(as.numeric(str_extract(unit, "\\d+"))/1000, "KG"),
+    grepl("\\sML", unit) ~ paste(as.numeric(str_extract(unit, "\\d+"))/1000, "L"),
+    TRUE ~ unit),
+    usdprice_norm = case_when(
+      grepl("\\sKG|\\sL", unit_std) ~  (usdprice / as.numeric(str_extract(unit_std, "^[^ ]+"))),
+      grepl("\\spcs", unit_std) ~  (usdprice / as.numeric(str_extract(unit_std, "\\d+"))),
+      grepl("\\sPounds", unit_std) ~  (usdprice / as.numeric(str_extract(unit_std, "\\d+"))),
+      grepl("Gallon", unit_std) ~  (usdprice / 3.78541),
+      TRUE ~ usdprice),
+    unit_norm = case_when(
+      grepl("\\sKG|\\sL", unit_std) ~  sub("^[^ ]+ ", "", unit_std),
+      grepl("\\spcs", unit_std) ~  "1 piece",
+      grepl("\\sPounds", unit_std) ~  "Pound",
+      grepl("Gallon", unit_std) ~  "L",
+      TRUE ~ unit_std),
+  )
 
+cat_prop_norm <- wfp_norm %>%
+  filter(pricetype == "Retail" & category != "non-food") %>%
+  group_by(category, unit_norm) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  mutate(proportion = count / sum(count)) %>%
+  arrange(category, desc(proportion)) %>%
+  group_by(category) %>%
+  top_n(3)
+
+unique(wfp_norm$unit_norm)
 
 ## I could only find 13 countries from FEWS NET staple food dataset
 # Angola, Chad, Congo, The Democratic Republic of the
 # Djibouti, Ethiopia, Haiti, Kenya, Malawi, Mauritania, Nigeria
 # Somalia, South Sudan, Zimbabwe
 
+## looking at creating a food basket of commodities from each category
+## they would be the most available in most markets within a country
 
-View(uniq_cats %>%
-       arrange(category, commodity, unit, pricetype))
+food_baskets <- wfp_norm %>%
+  group_by(countryiso3, category, commodity) %>%
+  summarise(foodcount = n()) %>%
+  arrange(countryiso3, category, desc(foodcount)) %>%
+  group_by(countryiso3, category) %>%
+  slice_head(n = 3) %>%
+  ungroup()
 
-wfp_fp_resources %>%
-  # filter to remove non-food category
-  filter(category != "non-food") %>%
-  # standardise by commodity
-  group_by(countryiso3, commodity) %>%
-  arrange(date) %>%
+##NOTE: some commodities are available as a national average
+## filtering for only items per country in the food basket
+## Another issue is that not all commodities are available each time.
+## filtering for only the last 5 years
+wfp_summ <- wfp_norm %>%
+  inner_join(food_baskets, by = c("countryiso3", "commodity"), 
+             suffix = c("", "_fb")) %>%
+  group_by(countryiso3, date) %>%
+  summarise(ave_price = mean(usdprice_norm, na.rm = TRUE)) %>%
+  group_by(countryiso3) %>%
+  arrange(countryiso3, date) %>%
+  complete(date = seq.Date(min(date), today(), by = "month")) %>%
   mutate(
-    rolling_avg = zoo::rollapply(usdprice, width = 3, FUN = mean, align = "right", fill = NA)
+    rol_avg = zoo::rollapply(ave_price, width = 3, 
+                                 FUN = mean, align = "right", fill = NA),
+    percent_increase = (diff(rol_avg)/lag(rol_avg)) * 100
   )
+
+ggplot(wfp_summ) + 
+  geom_line(aes(x=date, y=percent_increase)) + 
+  facet_wrap(vars(countryiso3))
+
+
+# get highest value in the last year
+med_alert <- wfp_summ %>%
+  filter(date >= (today() - years(1))) %>%
+  group_by(countryiso3) %>%
+  filter(rol_avg == max(rol_avg, na.rm = T))
+
+# get highest value in the last 3 years
+high_alert <- wfp_summ %>%
+  filter(date >= (today() - years(3))) %>%
+  group_by(countryiso3) %>%
+  filter(rol_avg == max(rol_avg, na.rm = T))
