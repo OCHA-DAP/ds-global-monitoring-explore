@@ -460,6 +460,12 @@ ggplot(data = wfp_option4) +
   labs(title = "Percent Price Increase over Time using most common commodities",
        y = "Average Price Increase")
 
+ggplot(data = wfp_option4) +
+  geom_line(aes(x = date, y = percent_increase)) + 
+  labs(title = "Percent Price Increase over Time using most common commodities",
+       y = "Average Price Increase") +
+  facet_wrap(vars(countryiso3))
+
 # get highest value in the last year
 med_alert <- wfp_option4 %>%
   filter(date >= (today() - years(1))) %>%
@@ -471,10 +477,10 @@ med_alert <- wfp_option4 %>%
 ggplot(data = med_alert) +
   geom_bar(aes(x = countryiso3, y = inc_max), stat = "identity") + 
   theme(axis.text.x = element_text(angle = 80, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10))) +
-  labs(title = "Average Price Increases for Medium Alerts", y = "Average Price")
+  labs(title = "Average Price Increases for Medium Alerts", y = "Average Price Increase")
 
 # get highest value in the last 3 years
-high_alert <- wfp_option1 %>%
+high_alert <- wfp_option4 %>%
   filter(date >= (today() - years(3))) %>%
   group_by(countryiso3) %>%
   #filter(rol_avg == max(rol_avg, na.rm = T))
@@ -484,4 +490,4 @@ high_alert <- wfp_option1 %>%
 ggplot(data = high_alert) +
   geom_bar(aes(x = countryiso3, y = inc_max), stat = "identity") + 
   theme(axis.text.x = element_text(angle = 80, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10))) +
-  labs(title = "Average Prices Increases for High Alerts", y = "Average Price")
+  labs(title = "Average Prices Increases for High Alerts", y = "Average Price Increase")
