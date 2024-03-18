@@ -253,7 +253,7 @@ food_baskets <- wfp_norm %>%
   slice_head(n = 3) %>%
   ungroup()
 
-##NOTE: some commodities are available as a national average
+## NOTE: some commodities are available as a national average
 ## filtering for only items per country in the food basket
 ## Another issue is that not all commodities are available each time.
 ## filtering for only the last 5 years
@@ -287,3 +287,54 @@ high_alert <- wfp_summ %>%
   filter(date >= (today() - years(3))) %>%
   group_by(countryiso3) %>%
   filter(rol_avg == max(rol_avg, na.rm = T))
+
+#### Option 1
+wfp_option1 <- wfp_norm %>%
+  filter(unit_norm %in% c("KG", "L")) %>%
+  group_by(countryiso3, date) %>%
+  summarise(ave_price = mean(usdprice_norm, na.rm = TRUE)) %>%
+  group_by(countryiso3) %>%
+  arrange(countryiso3, date) %>%
+  complete(date = seq.Date(min(date), today(), by = "month")) %>%
+  mutate(
+    rol_avg = zoo::rollapply(ave_price, width = 3, 
+                             FUN = mean, align = "right", fill = NA),
+    percent_increase = (diff(rol_avg)/lag(rol_avg)) * 100
+  )
+
+# get highest value in the last year
+med_alert <- wfp_option %>%
+  filter(date >= (today() - years(1))) %>%
+  group_by(countryiso3) %>%
+  #filter(rol_avg == max(rol_avg, na.rm = T))
+  summarise(rol_max = max(rol_avg, na.rm = T))
+
+# plotting
+ggplot(data = med_alert) +
+  geom_bar(aes(x = countryiso3, y = rol_max), stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10)))
+
+# get highest value in the last 3 years
+high_alert <- wfp_option %>%
+  filter(date >= (today() - years(3))) %>%
+  group_by(countryiso3) %>%
+  #filter(rol_avg == max(rol_avg, na.rm = T))
+  summarise(rol_max = max(rol_avg, na.rm = T))
+
+#plotting
+ggplot(data = high_alert) +
+  geom_bar(aes(x = countryiso3, y = rol_max), stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10)))
+
+# when did it happen
+# medium alert
+wfp_option %>%
+  left_join(med_alert, by = c("countryiso3"), 
+            suffix = c("", "med_alert")) %>%
+  filter(rol_avg == rol_max)
+
+wfp_option %>%
+  left_join(high_alert, by = c("countryiso3"), 
+            suffix = c("", "high_alert")) %>%
+  filter(rol_avg == rol_max)
+
