@@ -289,6 +289,7 @@ high_alert <- wfp_summ %>%
   filter(rol_avg == max(rol_avg, na.rm = T))
 
 #### Option 1
+
 wfp_option1 <- wfp_norm %>%
   filter(unit_norm %in% c("KG", "L")) %>%
   group_by(countryiso3, date) %>%
@@ -303,7 +304,7 @@ wfp_option1 <- wfp_norm %>%
   )
 
 # get highest value in the last year
-med_alert <- wfp_option %>%
+med_alert <- wfp_option1 %>%
   filter(date >= (today() - years(1))) %>%
   group_by(countryiso3) %>%
   #filter(rol_avg == max(rol_avg, na.rm = T))
@@ -312,10 +313,11 @@ med_alert <- wfp_option %>%
 # plotting
 ggplot(data = med_alert) +
   geom_bar(aes(x = countryiso3, y = rol_max), stat = "identity") + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10)))
+  theme(axis.text.x = element_text(angle = 80, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10))) +
+  labs(title = "Average Prices for Medium Alerts", y = "Average Price")
 
 # get highest value in the last 3 years
-high_alert <- wfp_option %>%
+high_alert <- wfp_option1 %>%
   filter(date >= (today() - years(3))) %>%
   group_by(countryiso3) %>%
   #filter(rol_avg == max(rol_avg, na.rm = T))
@@ -324,7 +326,8 @@ high_alert <- wfp_option %>%
 #plotting
 ggplot(data = high_alert) +
   geom_bar(aes(x = countryiso3, y = rol_max), stat = "identity") + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10)))
+  theme(axis.text.x = element_text(angle = 80, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10))) +
+  labs(title = "Average Prices for High Alerts", y = "Average Price")
 
 # when did it happen
 # medium alert
@@ -338,3 +341,147 @@ wfp_option %>%
             suffix = c("", "high_alert")) %>%
   filter(rol_avg == rol_max)
 
+### Adding summaries
+# checking how many commodities are available throughout the country
+total_markets <- wfp_norm %>%
+  group_by(countryiso3) %>%
+  summarize(total_num_markets = n_distinct(admin1, admin2, market))
+
+commodities_all_markets <- wfp_norm %>%
+  group_by(countryiso3, commodity) %>%
+  summarize(num_commodities_all_markets = n_distinct(admin1, admin2, market))
+
+proportion_all_markets <- merge(total_markets, commodities_all_markets, by = "countryiso3")
+proportion_all_markets$proportion = proportion_all_markets$num_commodities_all_markets / proportion_all_markets$total_num_markets
+range(proportion_all_markets$proportion)
+ggplot(data = proportion_all_markets) + 
+  geom_histogram(aes(proportion)) +
+  labs(title = "Histogram of Proportion of Commodities available in markets across Countries")
+ggplot(data = proportion_all_markets) + 
+  geom_histogram(aes(proportion)) +
+  labs(title = "Histogram of Proportion of Commodities available in markets across Countries") + 
+  facet_wrap(vars(countryiso3))
+
+# count for each country how many above 80% availability
+proportion_all_markets %>%
+  group_by(countryiso3) %>%
+  summarise(sum(proportion >= 0.8))
+
+# checking how many commodities are available throughout time
+total_dates <- wfp_norm %>%
+  group_by(countryiso3) %>%
+  summarize(total_num_dates = n_distinct(date))
+
+commodities_by_time <- wfp_norm %>%
+  group_by(countryiso3, commodity) %>%
+  summarize(num_dates = n_distinct(date))
+
+proportion_all_dates <- merge(total_dates, commodities_by_time, by = "countryiso3")
+proportion_all_dates$proportion = proportion_all_dates$num_dates / proportion_all_dates$total_num_dates
+range(proportion_all_dates$proportion)
+ggplot(data = proportion_all_dates) + 
+  geom_histogram(aes(proportion)) +
+  labs(title = "Histogram of Proportion of Commodities available across time")
+ggplot(data = proportion_all_dates) + 
+  geom_histogram(aes(proportion)) +
+  labs(title = "Histogram of Proportion of Commodities available in markets across Countries") + 
+  facet_wrap(vars(countryiso3))
+
+# count for each country how many above 80% availability
+proportion_all_dates %>%
+  group_by(countryiso3) %>%
+  summarise(sum(proportion >= 0.8))
+
+# countries that do not have at least 1 commodity available throughout
+countries_with_all_dates <- (proportion_all_dates %>% 
+                               filter(proportion == 1) %>%
+                               distinct(countryiso3))
+(unique(proportion_all_dates$countryiso3))[!((unique(proportion_all_dates$countryiso3)) %in% countries_with_all_dates$countryiso3)]
+# checking how often items are missing
+
+
+## Checking % price increase
+wfp_option2 <- wfp_norm %>%
+  filter(unit_norm %in% c("KG", "L")) %>%
+  group_by(countryiso3, admin1, admin2, market, date) %>%
+  summarise(ave_price = mean(usdprice_norm, na.rm = TRUE)) %>%
+  group_by(countryiso3, admin1, admin2, market) %>%
+  arrange(countryiso3, admin1, admin2, market, date) %>%
+  complete(date = seq.Date(min(date), today(), by = "month")) %>%
+  mutate(
+    rol_avg = zoo::rollapply(ave_price, width = 3, 
+                             FUN = mean, align = "right", fill = NA),
+    percent_increase = (diff(rol_avg)/lag(rol_avg)) * 100
+  ) %>%
+  group_by(countryiso3, date) %>%
+  summarise(ave_price_inc = mean(percent_increase, na.rm = TRUE))
+
+ggplot(data = wfp_option2) +
+  geom_line(aes(x = date, y = ave_price_inc)) + 
+  labs(title = "Percent Price Increase over Time",
+       y = "Average Price Increase")
+
+ggplot(data = wfp_option2) +
+  geom_line(aes(x = date, y = ave_price_inc)) + 
+  labs(title = "Percent Price Increase over Time",
+       y = "Average Price Increase") +
+  facet_wrap(vars(countryiso3))
+
+### using commodities across most of the country and TL
+wfp_option3 <- wfp_norm %>%
+  filter(unit_norm %in% c("KG", "L")) %>%
+  right_join(proportion_all_markets %>%
+               filter(proportion >= 0.75) %>%
+               select(countryiso3, commodity), 
+             by = c("countryiso3", "commodity"), 
+             suffix = c("", "_m")) %>%
+  right_join(proportion_all_dates %>%
+               filter(proportion >= 0.75) %>%
+               select(countryiso3, commodity), 
+             by = c("countryiso3", "commodity"), 
+             suffix = c("", "_d"))
+
+# removed some of the countries with no overlap between commodities available all over vs throughout
+wfp_option4 <- wfp_option3 %>%
+  group_by(countryiso3, date) %>%
+  filter(!(countryiso3 %in% c("BOL", "DOM", "LKA", "SLV"))) %>%
+  summarise(ave_price = mean(usdprice_norm, na.rm = TRUE)) %>%
+  group_by(countryiso3) %>%
+  arrange(countryiso3, date) %>%
+  complete(date = seq.Date(min(date, na.rm = T), today(), by = "month")) %>%
+  mutate(
+    rol_avg = zoo::rollapply(ave_price, width = 3, 
+                             FUN = mean, align = "right", fill = NA),
+    percent_increase = (diff(rol_avg)/lag(rol_avg)) * 100
+  )
+
+ggplot(data = wfp_option4) +
+  geom_line(aes(x = date, y = percent_increase)) + 
+  labs(title = "Percent Price Increase over Time using most common commodities",
+       y = "Average Price Increase")
+
+# get highest value in the last year
+med_alert <- wfp_option4 %>%
+  filter(date >= (today() - years(1))) %>%
+  group_by(countryiso3) %>%
+  #filter(rol_avg == max(rol_avg, na.rm = T))
+  summarise(inc_max = max(percent_increase, na.rm = T))
+
+# plotting
+ggplot(data = med_alert) +
+  geom_bar(aes(x = countryiso3, y = inc_max), stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 80, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10))) +
+  labs(title = "Average Price Increases for Medium Alerts", y = "Average Price")
+
+# get highest value in the last 3 years
+high_alert <- wfp_option1 %>%
+  filter(date >= (today() - years(3))) %>%
+  group_by(countryiso3) %>%
+  #filter(rol_avg == max(rol_avg, na.rm = T))
+  summarise(inc_max = max(percent_increase, na.rm = T))
+
+#plotting
+ggplot(data = high_alert) +
+  geom_bar(aes(x = countryiso3, y = inc_max), stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 80, hjust = 1, margin = margin(t = -10, r = 10, b = 10, l = 10))) +
+  labs(title = "Average Prices Increases for High Alerts", y = "Average Price")
